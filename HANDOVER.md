@@ -126,7 +126,7 @@ When a user clicks **"Download Translated EPS ↓"**:
 4. Button resets to normal after download. Shows `✅ EPS downloaded successfully!`
 
 > [!IMPORTANT]
-> Every file uses **2 conversion credits** (one for EPS→SVG on upload, one for SVG→EPS on download). The free daily limit of 25 credits effectively supports **~12 complete file workflows per day**. To increase this, upgrade at [cloudconvert.com/pricing](https://cloudconvert.com/pricing).
+> Every file uses **2 conversion credits** (one for EPS→SVG on upload, one for SVG→EPS on download). The free daily limit of 10 credits effectively supports **5 complete file workflows per day**. To increase this, upgrade at [cloudconvert.com/pricing](https://cloudconvert.com/pricing).
 
 ---
 
