@@ -2385,6 +2385,9 @@
       return 'aura_conv_' + userEmail + '_' + today;
     }
     function hasUsedConversionToday() {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return false;
+      }
       return localStorage.getItem(getUserConversionKey()) === 'used';
     }
     function markConversionUsedToday() {
@@ -2486,6 +2489,7 @@
           })
           .catch(err => {
             hideLoadingScreen();
+            document.getElementById('fileInput').value = '';
             console.error("Conversion failed:", err);
             if (err.message && err.message.includes('429')) {
               showEpsLimitModal('capacity');
