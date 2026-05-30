@@ -2,7 +2,6 @@
 
 > [!IMPORTANT]
 > **The final, complete, production-ready file is `index.html`.**
-> The `convert.php` file is **no longer needed** and has been deleted.
 
 ---
 
@@ -18,7 +17,8 @@ The files are uploaded via the **WP File Manager** plugin (accessible from the W
 ### Core Files
 | File | Purpose |
 |---|---|
-| `index.html` | The **sole main file** — contains all HTML, CSS, JavaScript, Google Auth, tools dashboard, CloudConvert logic, watermarking, and login tracking |
+| `index.html` | Frontend interface — contains all HTML, CSS, JavaScript, Google Auth, tools dashboard, visual vector editor, and watermarking |
+| `api.php` | Secure backend proxy — holds private CloudConvert API key and Google Sheets Web App URL on the server, forwarding requests safely |
 | `HANDOVER.md` | This document |
 
 ---
@@ -104,11 +104,11 @@ window.open('https://lingochaps.com', '_blank'); // ← Replace this URL
 
 ## 5. CloudConvert API Integration
 
-Both conversion operations are handled entirely inside `index.html` using native JavaScript `fetch` — no server-side PHP is involved.
+Conversion jobs are initiated and monitored by routing browser requests through the secure server-side proxy file `api.php`. This prevents client-side exposure of your private key.
 
-**API Key Location:** Line ~1320 in `index.html`
-```javascript
-const CLOUDCONVERT_API_KEY = 'eyJ0eXAiOiJKV1Qi...';
+**API Key Location:** Stored privately as a constant in `api.php`:
+```php
+define('CLOUDCONVERT_API_KEY', 'eyJ0eXAiOiJKV1Qi...');
 ```
 
 ### Operation A: EPS → SVG (On File Upload)
@@ -150,13 +150,14 @@ wmText.textContent = 'www.lingochaps.com';
 Every successful Google sign-in is silently recorded in a private Google Sheet in your Google Drive.
 
 **How it works:**
-1. `handleGoogleSignIn()` fires a silent `POST` request to a Google Apps Script Web App.
-2. The Apps Script automatically creates a Google Sheet named **"LingoChaps Tool Users"** on the very first login, and appends a new row for every subsequent sign-in.
+1. `handleGoogleSignIn()` fires a silent `POST` request to your local proxy: `api.php?action=log-login`.
+2. The proxy file forwards this securely on the server to the Google Apps Script Web App. This prevents public exposure of the Web App URL.
+3. The Apps Script automatically creates a Google Sheet named **"LingoChaps Tool Users"** on the very first login, and appends a new row for every subsequent sign-in.
 
 **Google Apps Script Details:**
 *   **Script Name:** LingoChaps Login Logger
 *   **Edit URL:** [script.google.com](https://script.google.com) → "LingoChaps Login Logger"
-*   **Web App URL:** `https://script.google.com/macros/s/AKfycbwNmYFt1K-lEx5HUcDUgwp7_5_9FzjfldfW0L-P6CyXqb7DER2z0YtCJWzyGv6rywl_Ig/exec`
+*   **Web App URL:** Stored securely as a constant in `api.php`.
 
 **Google Sheet columns:**
 | Column A | Column B | Column C |
@@ -178,8 +179,9 @@ Every successful Google sign-in is silently recorded in a private Google Sheet i
 | **Add a new test user (Testing mode)** | Google Cloud Console → OAuth Consent Screen → Add Test User |
 | **Publish to Production (allow all users)** | Google Cloud Console → OAuth Consent Screen → Publish App |
 | **Update LingoGenie URL when ready** | Find `launchTool()` (~line 3480) → update `window.open(...)` URL |
-| **Change watermark text** | Find `wmText.textContent` (~line 3252) → update the string |
-| **Rotate CloudConvert API Key** | cloudconvert.com → API → Keys. Update line ~1320 in `index.html` |
+| **Change watermark text** | Find `wmText.textContent` in `index.html` → update the string |
+| **Rotate CloudConvert API Key** | cloudconvert.com → API → Keys. Update `CLOUDCONVERT_API_KEY` constant in `api.php` |
+| **Rotate Google Script URL** | Update `GOOGLE_SHEETS_URL` constant in `api.php` |
 
 > [!NOTE]
 > Updating WordPress core, themes, or plugins will **not** affect this tool as it lives in its own isolated directory (`/eps-tool/`).

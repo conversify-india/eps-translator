@@ -2375,8 +2375,7 @@
     document.getElementById('dropZone').addEventListener('drop', e => { e.preventDefault(); e.currentTarget.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
     document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
-    // ── CloudConvert API Key (replace with your real key from cloudconvert.com) ──
-    const CLOUDCONVERT_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiY2NlMzQyZWY2M2RhMDBhYjg2MDBlYzViNzIyMWE0NWVhMGI3Yzk1ZGUwMjdiNDYxZmVkZjNhYzM5MjUwYjJlZTVlZDdiYWI5NGQ3NGY5YTAiLCJpYXQiOjE3Nzk5Njg5NzIuNzI5NDUxLCJuYmYiOjE3Nzk5Njg5NzIuNzI5NDUzLCJleHAiOjQ5MzU2NDI1NzIuNzIyMTQ4LCJzdWIiOiI3NTc0OTA4OCIsInNjb3BlcyI6WyJ0YXNrLnJlYWQiLCJ0YXNrLndyaXRlIl19.rCk2YXwVABtGLTOEK0xf0U3dDVprj2zljSQFAcvhJ0V8aGUuIuDHi9xj1IWKpexWwYtSfxXUS7MwvvnnHJfEnvEBjsO38YiRr9_sfwRxq7nRxS7WaMq_hPDzJMc2dFWM_KytFJAxHv54sm_HVo4oYzGYfBgyb-n48xDRlOP10YkC4JQedX9oio1igNCWkNEFnHjBtBBzaspG-fx2pIqQrlUZjaW3MK95YVlFKy5XByO4VTTeBNx3N4mVBiL88ZGf-8zA62FoHp5vDz3YkODaXdTy6Suj-zMdeUGQssruaVQWbqiYXefqPZdsFi4_y--h5335m1RBGmdrEEs07pi5F1mJVLbgl19zSKEyH17ZaLYSNSrCj9gF-6vJs-6_qAbpFeN4-mCD5vaFm7VkCKhGAo6fRDWYapGjhjyFEYTwvDLJDq4tJVEhjkcl7qP5JE4hYHR6M3P09FfEhAo3S0KzTv3qRsWNjXd-_kGESH_SB7zIRxeNtRzXDvBXxNX3D1jvTm-UK79QGSYIbovjlAPmRVNQa0FFLs75ZFhdfWh7R9Vsu1z34Jymrn_rBWlz8nWBZL75NYYvyVmpTX_cSJeAfSUKECTGHtLuQq1dwkuB-z8H6m3hWCmKo6R0i3d-O9d_GQCKfNxcfBsVvhg6F74fj2eRFY_2uui3gwMlTM3UrhA';
+    // ── API credentials are proxy secured through api.php ──
 
     // ── Per-user daily limit helpers (stored in localStorage) ──
     function getUserConversionKey() {
@@ -2424,10 +2423,9 @@
         ]);
 
         // ── Step 1: Create CloudConvert Job ──
-        fetch('https://api.cloudconvert.com/v2/jobs', {
+        fetch('api.php?action=create-job', {
           method: 'POST',
           headers: {
-            'Authorization': 'Bearer ' + CLOUDCONVERT_API_KEY,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
@@ -2461,9 +2459,7 @@
 
             for (let i = 0; i < 30; i++) {
               await new Promise(res => setTimeout(res, 2000));
-              const statusRes = await fetch('https://api.cloudconvert.com/v2/jobs/' + jobId, {
-                headers: { 'Authorization': 'Bearer ' + CLOUDCONVERT_API_KEY }
-              });
+              const statusRes = await fetch('api.php?action=check-status&id=' + jobId);
               const statusData = await statusRes.json();
               const status = statusData.data.status;
 
@@ -4477,9 +4473,9 @@
         const svgFile = new File([translatedSVGBlob], currentFileName + '_translated.svg', { type: 'image/svg+xml' });
 
         // Step 1: Create CloudConvert Job (SVG → EPS)
-        const jobRes = await fetch('https://api.cloudconvert.com/v2/jobs', {
+        const jobRes = await fetch('api.php?action=create-job', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + CLOUDCONVERT_API_KEY, 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tasks: {
               'import-svg': { operation: 'import/upload' },
@@ -4507,9 +4503,7 @@
         let epsUrl = null;
         for (let i = 0; i < 30; i++) {
           await new Promise(res => setTimeout(res, 2000));
-          const statusRes = await fetch('https://api.cloudconvert.com/v2/jobs/' + jobId, {
-            headers: { 'Authorization': 'Bearer ' + CLOUDCONVERT_API_KEY }
-          });
+          const statusRes = await fetch('api.php?action=check-status&id=' + jobId);
           const statusData = await statusRes.json();
           const status = statusData.data.status;
           if (status === 'finished') {
@@ -4596,9 +4590,8 @@
         }
 
         // ── Log sign-in to Google Sheets silently ──
-        fetch('https://script.google.com/macros/s/AKfycbwNmYFt1K-lEx5HUcDUgwp7_5_9FzjfldfW0L-P6CyXqb7DER2z0YtCJWzyGv6rywl_Ig/exec', {
+        fetch('api.php?action=log-login', {
           method: 'POST',
-          mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: userName, email: userEmail })
         }).catch(() => { }); // Silent — never interrupts the user
