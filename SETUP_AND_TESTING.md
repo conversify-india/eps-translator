@@ -66,11 +66,17 @@ The codebase is engineered with smart environment auto-detection so that local t
 In [api.js](file:///Users/snigdha/Desktop/eps-translator/react-app/src/services/api.js):
 ```javascript
 const baseUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'https://lingochaps.com/eps-tool/api.php'
+  ? 'http://localhost:8000/api.php'
   : 'api.php';
 ```
-* **Localhost Mode:** All backend requests (CloudConvert conversion, Gemini AI Translation, Google Sheets logging) are automatically proxied to the live production server at `https://lingochaps.com/eps-tool/api.php`. You do not need to host a local PHP server or store secret API credentials on your laptop.
+* **Localhost Mode:** All backend requests (CloudConvert conversion, Gemini AI Translation, Google Sheets logging) are automatically proxied to your local PHP server at `http://localhost:8000/api.php` so you can test changes to your backend securely.
 * **Production Mode:** Requests use relative pathing to call the adjacent `api.php` on the server hosting the app.
+
+To start your local PHP server, run this in your root folder:
+```bash
+php -S localhost:8000
+```
+
 
 ### B. Free Sandbox Bypasses
 In [UploadZone.jsx](file:///Users/snigdha/Desktop/eps-translator/react-app/src/components/UploadZone.jsx):

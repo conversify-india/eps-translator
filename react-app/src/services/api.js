@@ -5,7 +5,7 @@
 const getApiUrl = (action, params = {}) => {
   // If running locally, proxy to the live production server for easy testing
   const baseUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    ? 'https://lingochaps.com/eps-tool/api.php'
+    ? 'http://localhost:8000/api.php'
     : 'api.php';
 
   const queryParams = new URLSearchParams({ action, ...params });
