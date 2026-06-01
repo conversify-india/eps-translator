@@ -120,11 +120,14 @@ export default function App() {
   };
 
   const handleTranslationChange = (id, value) => {
-    setLabels(prev => prev.map(label => {
-      if (label.id !== id) return label;
+    const targetLabel = labels.find(l => l.id === id);
+    if (!targetLabel) return;
 
-      // Smart overflow flag: if translation is longer than original text
-      const isFlagged = value.trim().length > label.source.length;
+    const targetSource = targetLabel.source;
+    const isFlagged = value.trim().length > targetSource.length;
+
+    setLabels(prev => prev.map(label => {
+      if (label.source !== targetSource) return label;
       return {
         ...label,
         translation: value,
@@ -133,9 +136,10 @@ export default function App() {
     }));
   };
 
-  const handleLabelUpdate = (id, updates) => {
+  const handleLabelUpdate = (idOrIds, updates) => {
+    const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
     setLabels(prev => prev.map(label => {
-      if (label.id !== id) return label;
+      if (!ids.includes(label.id)) return label;
       return { ...label, ...updates };
     }));
   };

@@ -21,6 +21,7 @@ export default function VisualCanvas({
   const [globalScale, setGlobalScale] = useState(1.0);
   const [overlapCount, setOverlapCount] = useState(0);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [applyToAllSameSource, setApplyToAllSameSource] = useState(true);
 
   // Sync selected label data to sidebar form state
   const selectedLabel = labels.find(l => l.id === selectedLabelId);
@@ -383,18 +384,31 @@ export default function VisualCanvas({
   // Sidebar controls modifier helper
   const updateSelectedLabel = (field, value) => {
     if (!selectedLabelId) return;
-    onLabelUpdate(selectedLabelId, { [field]: value });
+    if (applyToAllSameSource) {
+      const targetSource = selectedLabel.source;
+      const idsToUpdate = labels.filter(l => l.source === targetSource).map(l => l.id);
+      onLabelUpdate(idsToUpdate, { [field]: value });
+    } else {
+      onLabelUpdate(selectedLabelId, { [field]: value });
+    }
   };
 
   const clearOverrides = () => {
     if (!selectedLabelId) return;
-    onLabelUpdate(selectedLabelId, {
+    const overrides = {
       fontSizeOverride: undefined,
       letterSpacingOverride: undefined,
       dxOverride: undefined,
       dyOverride: undefined,
       haloOverride: false
-    });
+    };
+    if (applyToAllSameSource) {
+      const targetSource = selectedLabel.source;
+      const idsToUpdate = labels.filter(l => l.source === targetSource).map(l => l.id);
+      onLabelUpdate(idsToUpdate, overrides);
+    } else {
+      onLabelUpdate(selectedLabelId, overrides);
+    }
   };
 
   return (
@@ -524,6 +538,26 @@ export default function VisualCanvas({
                   }}
                 />
               </div>
+
+              {/* Batch edit identical labels checkbox */}
+              {(() => {
+                const identicalCount = labels.filter(l => l.source === selectedLabel.source).length;
+                if (identicalCount <= 1) return null;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '-0.25rem 0 0.25rem 0' }}>
+                    <input 
+                      type="checkbox" 
+                      id="applyToAllCheck"
+                      checked={applyToAllSameSource} 
+                      onChange={(e) => setApplyToAllSameSource(e.target.checked)}
+                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="applyToAllCheck" style={{ fontSize: '0.76rem', color: '#a78bfa', cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
+                      Apply edits to all {identicalCount} identical labels
+                    </label>
+                  </div>
+                );
+              })()}
 
               {/* Font Size slider */}
               <div className="control-group">
