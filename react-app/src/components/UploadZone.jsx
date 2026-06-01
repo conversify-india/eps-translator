@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { apiService } from '../services/api';
+import { showToast } from '../hooks/useToast';
 
 export default function UploadZone({ user, onConversionSuccess }) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -132,7 +133,7 @@ export default function UploadZone({ user, onConversionSuccess }) {
         if (err.message && err.message.includes('429')) {
           setLimitModalType('capacity');
         } else {
-          alert('File processing failed: ' + err.message);
+          showToast('File processing failed: ' + err.message, 'error');
         }
       }
       return;
@@ -148,7 +149,7 @@ export default function UploadZone({ user, onConversionSuccess }) {
       return;
     }
 
-    alert('Please upload a .svg or .eps file');
+    showToast('Please upload a .svg or .eps file', 'warning');
   };
 
   const onDragOver = (e) => {

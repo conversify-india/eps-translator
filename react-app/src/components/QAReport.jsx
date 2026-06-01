@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
+import { showToast } from '../hooks/useToast';
 
 export default function QAReport({
   filename,
@@ -220,13 +221,13 @@ export default function QAReport({
 
       setExportText('Download Translated EPS ↓');
       setExporting(false);
-      alert('✅ EPS downloaded successfully!');
+      showToast('EPS downloaded successfully!', 'success');
 
     } catch (err) {
       setExporting(false);
       setExportText('Download Translated EPS ↓');
       console.error(err);
-      alert('EPS conversion failed: ' + err.message);
+      showToast('EPS conversion failed: ' + err.message, 'error');
     }
   };
 

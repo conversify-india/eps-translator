@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiService } from '../services/api';
+import { showToast } from '../hooks/useToast';
 
 export default function Diagnosis({
   filename,
@@ -16,7 +17,7 @@ export default function Diagnosis({
 
   const handleAiTranslate = async () => {
     if (uniqueSourceTexts.length === 0) {
-      alert('No text segments found to translate.');
+      showToast('No text segments found to translate.', 'warning');
       return;
     }
 
@@ -29,9 +30,10 @@ export default function Diagnosis({
       
       // Pass the translations map back to the App parent component
       onAiTranslationSuccess(translationsMap);
+      showToast('Translation completed successfully!', 'success');
     } catch (err) {
       console.error('AI translation failed:', err);
-      alert('AI Translation failed: ' + err.message + '\n\nYou can still translate manually or try again.');
+      showToast('AI Translation failed: ' + err.message, 'error');
     } finally {
       setTranslating(false);
     }

@@ -9,6 +9,7 @@ import TranslationTable from './components/TranslationTable';
 import VisualCanvas from './components/VisualCanvas';
 import QAReport from './components/QAReport';
 import { parseSVGString } from './utils/svgParser';
+import { showToast } from './hooks/useToast';
 
 export default function App() {
   // ── Authentication & View States ──
@@ -114,7 +115,7 @@ export default function App() {
       setMaxUnlockedStep(2);
     } catch (err) {
       console.error(err);
-      alert('Error parsing uploaded file. Please verify it is a valid vector file.');
+      showToast('Error parsing uploaded file. Please verify it is a valid vector file.', 'error');
     }
   };
 
