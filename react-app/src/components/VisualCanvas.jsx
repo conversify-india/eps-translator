@@ -23,6 +23,48 @@ export default function VisualCanvas({
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [applyToAllSameSource, setApplyToAllSameSource] = useState(true);
 
+  // HTML overlay selection highlight bounds state
+  const [highlightRect, setHighlightRect] = useState(null);
+
+  const updateHighlightPosition = () => {
+    if (!selectedLabelId) {
+      setHighlightRect(null);
+      return;
+    }
+    const container = contentRef.current;
+    if (!container) return;
+
+    const targetEl = container.querySelector(`[data-label-id="${selectedLabelId}"]`);
+    if (targetEl) {
+      const textNode = targetEl.tagName.toLowerCase() === 'text' ? targetEl : targetEl.closest('text') || targetEl;
+      const targetRect = textNode.getBoundingClientRect();
+      const contentRect = container.getBoundingClientRect();
+
+      if (targetRect.width > 0 && targetRect.height > 0) {
+        setHighlightRect({
+          left: (targetRect.left - contentRect.left) / zoomScale,
+          top: (targetRect.top - contentRect.top) / zoomScale,
+          width: targetRect.width / zoomScale,
+          height: targetRect.height / zoomScale
+        });
+      } else {
+        setHighlightRect(null);
+      }
+    } else {
+      setHighlightRect(null);
+    }
+  };
+
+  // Keep highlight box position and size synced with browser layout cycles
+  useEffect(() => {
+    let animFrame;
+    const update = () => {
+      updateHighlightPosition();
+    };
+    animFrame = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(animFrame);
+  }, [selectedLabelId, labels, globalScale, zoomScale]);
+
   // Sync selected label data to sidebar form state
   const selectedLabel = labels.find(l => l.id === selectedLabelId);
 
@@ -93,37 +135,10 @@ export default function VisualCanvas({
     const svgEl = container.querySelector('svg');
     if (!svgEl) return;
 
-    // A. Draw selection highlight
-    let selGroup = svgEl.getElementById('selectionHighlight');
-    if (selectedLabelId) {
-      if (!selGroup) {
-        selGroup = svgEl.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'g');
-        selGroup.setAttribute('id', 'selectionHighlight');
-        selGroup.setAttribute('style', 'pointer-events: none;');
-        svgEl.appendChild(selGroup);
-      }
-      selGroup.innerHTML = '';
-
-      const targetEl = container.querySelector(`[data-label-id="${selectedLabelId}"]`);
-      if (targetEl) {
-        const textNode = targetEl.tagName.toLowerCase() === 'text' ? targetEl : targetEl.closest('text') || targetEl;
-        const rect = textNode.getBoundingClientRect();
-        const coords = getSvgCoordsForRect(svgEl, rect);
-
-        const r = svgEl.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        r.setAttribute('x', coords.x - 3);
-        r.setAttribute('y', coords.y - 3);
-        r.setAttribute('width', coords.width + 6);
-        r.setAttribute('height', coords.height + 6);
-        r.setAttribute('fill', 'rgba(59, 130, 246, 0.15)');
-        r.setAttribute('stroke', '#3b82f6');
-        r.setAttribute('stroke-width', '1.5');
-        r.setAttribute('rx', '3');
-        r.setAttribute('ry', '3');
-        selGroup.appendChild(r);
-      }
-    } else if (selGroup) {
-      selGroup.remove();
+    // Clean up old selection highlight group if it exists in SVG
+    const oldSelGroup = svgEl.getElementById('selectionHighlight');
+    if (oldSelGroup) {
+      oldSelGroup.remove();
     }
 
     // B. Draw overlaps
@@ -488,6 +503,27 @@ export default function VisualCanvas({
                 transform: `translate(${panX}px, ${panY}px) scale(${zoomScale})`
               }}
             />
+            {highlightRect && (
+              <div 
+                style={{
+                  position: 'absolute',
+                  transformOrigin: '0 0',
+                  transform: `translate(${panX}px, ${panY}px) scale(${zoomScale})`,
+                  left: `${highlightRect.left - 5}px`,
+                  top: `${highlightRect.top - 2}px`,
+                  width: `${highlightRect.width + 10}px`,
+                  height: `${highlightRect.height + 4}px`,
+                  border: '2px solid #3b82f6',
+                  background: 'rgba(59, 130, 246, 0.14)',
+                  borderRadius: '4px',
+                  pointerEvents: 'none',
+                  zIndex: 9999,
+                  boxShadow: '0 0 0 1px rgba(255,255,255,0.5)',
+                  boxSizing: 'border-box',
+                  transition: 'left 0.08s ease, top 0.08s ease, width 0.08s ease, height 0.08s ease'
+                }}
+              />
+            )}
           </div>
         </div>
 
