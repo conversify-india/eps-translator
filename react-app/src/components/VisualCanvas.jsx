@@ -70,6 +70,7 @@ export default function VisualCanvas({
 
   // ── 1. Apply Translations & Overrides directly to DOM ──
   useEffect(() => {
+    console.log('[VisualCanvas] useEffect triggered. contentRef.current:', contentRef.current, 'labels:', labels);
     const container = contentRef.current;
     if (!container) return;
 
