@@ -664,11 +664,9 @@ export default function VisualCanvas({
             <div className="guide-step">
               <div className="guide-num">A</div>
               <div>
-                <div className="guide-title">Single vs. Global Editing</div>
+                <div className="guide-title">Selecting &amp; Translating Text</div>
                 <div className="guide-body">
-                  Select a label in the diagram. Toggle <b>"Apply text &amp; style changes to all occurrences"</b>:<br />
-                  • <b>Checked (Default)</b>: Any edit or resizing updates all identical words across the file.<br />
-                  • <b>Unchecked</b>: Edits the text, font size, or position of <b>only the selected instance</b>. Look at the index tracker (e.g. <code>2/5</code>) in the sidebar to verify.
+                  Click any text block directly on the vector diagram, or select a row in the Translation Table. In the sidebar panel on the right, you can type a custom translation to update it instantly.
                 </div>
               </div>
             </div>
@@ -678,7 +676,7 @@ export default function VisualCanvas({
               <div>
                 <div className="guide-title">Screen-Aligned Nudging (Move Text)</div>
                 <div className="guide-body">
-                  Click a label and use your keyboard <b>Arrow keys</b> (hold <code>Shift</code> for larger steps) or slide the <b>Offset X / Y (DX/DY)</b> controls. Because nudging is screen-aligned, the text always slides in the direction you push it, even if the text is rotated 90° or 180°!
+                  Click a label and use your keyboard <b>Arrow keys</b> (hold <code>Shift</code> for larger steps) or slide the <b>Offset X (DX)</b> and <b>Offset Y (DY)</b> controls to adjust its position. Because nudging is screen-aligned, the text always slides in the direction you push it, even if it is rotated!
                 </div>
               </div>
             </div>
@@ -688,7 +686,7 @@ export default function VisualCanvas({
               <div>
                 <div className="guide-title">Background Masking (Clear Wires &amp; Circles)</div>
                 <div className="guide-body">
-                  If text crosses over lines, wires, or circles in the diagram, check <b>Enable text outline (White Halo)</b>. This puts a clean white background mask behind the letters to block out underlying lines and make the text readable.
+                  If text crosses over lines, wires, or circles in the diagram, check <b>Enable text outline (White Halo)</b> in the sidebar controls. This puts a clean white background halo behind the letters to block out underlying vector lines and make the text readable.
                 </div>
               </div>
             </div>
@@ -696,9 +694,9 @@ export default function VisualCanvas({
             <div className="guide-step">
               <div className="guide-num">D</div>
               <div>
-                <div className="guide-title">Bulk Resizing &amp; Overlap Highlighting</div>
+                <div className="guide-title">Individual &amp; Global Resizing</div>
                 <div className="guide-body">
-                  Toggle <b>⚠️ Highlight Overlaps</b> in the top toolbar to outline colliding text blocks in red. Slide the <b>Global Scale</b> slider to dynamically shrink or enlarge all texts in the SVG in one go to fix overall layout density.
+                  Adjust the <b>Font Size</b> and <b>Letter Spacing</b> sliders in the sidebar to resize a single text label, or slide the <b>Global Scale</b> slider in the top toolbar to shrink or enlarge all texts across the diagram to fix overall layout density.
                 </div>
               </div>
             </div>
@@ -706,9 +704,9 @@ export default function VisualCanvas({
             <div className="guide-step" style={{ borderBottom: 'none' }}>
               <div className="guide-num">E</div>
               <div>
-                <div className="guide-title">Undo &amp; Revert Changes</div>
+                <div className="guide-title">Overlap Highlighting &amp; Resets</div>
                 <div className="guide-body">
-                  Want to undo overrides? Click <b>Clear Offsets</b> to restore default style overrides, or click <b>Deselect</b> to clear your current selection.
+                  Toggle <b>⚠️ Highlight Overlaps</b> in the top toolbar to outline colliding text blocks in red. Click <b>Clear Offsets</b> to restore default style overrides, or click <b>Deselect</b> to clear your current selection.
                 </div>
               </div>
             </div>

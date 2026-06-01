@@ -22,18 +22,60 @@ body {
   width: 100%;
 }
 
-header h1 {
-  font-size: 1.6rem;
-  font-weight: 800 !important;
-  color: #0f172a !important;
-  letter-spacing: -0.02em;
+header.app-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 2.5rem;
+  font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
-header p {
-  font-size: 0.85rem;
-  color: #64748b !important;
-  margin-top: 0.3rem;
+header.app-header .logo-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.25);
+  margin-bottom: 1rem;
+  color: #ffffff;
+  animation: pulseGlow 3s infinite ease-in-out;
 }
+
+header.app-header h1 {
+  font-size: 1.8rem;
+  font-weight: 800 !important;
+  background: linear-gradient(135deg, #0f172a 30%, #4f46e5 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  letter-spacing: -0.03em !important;
+  margin: 0;
+}
+
+header.app-header p {
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  color: #64748b !important;
+  margin-top: 0.4rem !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 4px 20px rgba(124, 58, 237, 0.25);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 4px 28px rgba(124, 58, 237, 0.45);
+    transform: scale(1.03);
+  }
+}
+
 
 /* --- BUTTON STYLES --- */
 .btn {
