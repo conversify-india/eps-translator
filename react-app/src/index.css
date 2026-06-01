@@ -170,8 +170,9 @@ header p {
 }
 
 .toolbar-btn {
-  width: 28px;
+  min-width: 28px;
   height: 28px;
+  padding: 0 0.6rem;
   border-radius: 6px;
   background: #f1f5f9 !important;
   border: 1px solid #cbd5e1 !important;
@@ -180,8 +181,9 @@ header p {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   transition: all 0.15s;
+  gap: 0.3rem;
 }
 
 .toolbar-btn:hover {
