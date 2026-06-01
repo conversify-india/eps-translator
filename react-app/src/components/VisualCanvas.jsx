@@ -640,6 +640,7 @@ export default function VisualCanvas({
             </button>
           </div>
         </div>
+      </div>
 
       {/* Collapsible User Guide Card */}
       <div className="card" style={{ marginTop: '1.5rem', padding: '1.25rem' }}>
@@ -716,6 +717,5 @@ export default function VisualCanvas({
       </div>
 
     </div>
-  </div>
-);
+  );
 }
