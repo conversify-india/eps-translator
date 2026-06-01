@@ -12,3 +12,10 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Credentials & Configuration
+api.php
+
+# Compiled/zipped archives
+*.zip
+

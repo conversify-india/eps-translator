@@ -1,187 +1,101 @@
 # EPS Translator Tool — Technical Handover Document
 
 > [!IMPORTANT]
-> **The final, complete, production-ready file is `index.html`.**
+> **The monolithic codebase has been migrated to a modern, modular Vite + React application.**
+> *   **React source code folder:** [react-app/](file:///Users/snigdha/Desktop/eps-translator/react-app)
+> *   **Production-ready compiled static files:** [react-app/dist/](file:///Users/snigdha/Desktop/eps-translator/react-app/dist) (which contains the entry `index.html`, visual asset assets, and styles).
 
 ---
 
 ## 1. Hosting & Deployment Architecture
 
-The tool is hosted directly on the Hostinger server running the WordPress site, but it operates independently of the WordPress theme architecture to ensure maximum performance and avoid plugin conflicts.
+The tool is hosted directly on the Hostinger server running the WordPress site, but operates independently of the WordPress theme architecture to ensure maximum performance, isolation, and avoid plugin conflicts.
 
 **Deployment Location:**
-The files are uploaded via the **WP File Manager** plugin (accessible from the WordPress Dashboard at `wp-admin`).
-*   **Directory:** `public_html/eps-tool/`
-*   **Live URL:** `https://lingochaps.com/eps-tool/`
+The files are uploaded via FTP, cPanel, or the **WP File Manager** plugin (accessible from the WordPress Dashboard at `wp-admin`).
+*   **Staging Directory:** `public_html/eps-tool-staging/` (Accessible at `https://lingochaps.com/eps-tool-staging/`)
+*   **Production Directory:** `public_html/eps-tool/` (Accessible at `https://lingochaps.com/eps-tool/`)
 
-### Core Files
-| File | Purpose |
-|---|---|
-| `index.html` | Frontend interface — contains all HTML, CSS, JavaScript, Google Auth, tools dashboard, visual vector editor, and watermarking |
-| `api.php` | Secure backend proxy — holds private CloudConvert API key and Google Sheets Web App URL on the server, forwarding requests safely |
-| `HANDOVER.md` | This document |
+### Deployed Folder File List
+To launch the tool, the following files from the compiled `react-app/dist/` directory and the root workspace must be uploaded into the target subdirectory on the server:
 
----
-
-## 2. Complete User Journey & Flow
-
-The full end-to-end flow a user experiences from opening the URL to using the tool:
-
-```
-1. User opens: https://lingochaps.com/eps-tool/
-        ↓
-2. LOCKSCREEN appears (animated neural globe on left, login panel on right)
-        ↓
-3. User clicks "Continue with Google" → signs in with their Google account
-        ↓
-4. User ticks the CAPTCHA checkbox ("I'm not a robot")
-        ↓
-5. TOOLS DASHBOARD appears — "Choose Your Tool"
-        ↓
-      ┌─────────────────────┬────────────────────────────────┐
-      │  Click "LingoGenie" │  Click "Aura EPS Tool"         │
-      │  → Opens            │  → Dashboard hides             │
-      │    lingochaps.com   │  → EPS Translation Tool opens  │
-      │    in a new tab     │                                │
-      └─────────────────────┴────────────────────────────────┘
-```
-
-> [!NOTE]
-> The EPS Tool body is completely hidden (`display:none`) until the user explicitly clicks "Aura EPS Tool" on the dashboard. This prevents any flash of content appearing before the lockscreen fully loads.
-
----
-
-## 3. Tools Dashboard
-
-After successful login, the user lands on a clean "Choose Your Tool" dashboard. It contains:
-
-| Card | Status | Action |
+| File / Folder | Origin Location | Purpose |
 |---|---|---|
-| **LingoGenie** 🌐 | Live (placeholder URL) | Opens `https://lingochaps.com` in a new tab. Update the URL in `launchTool()` when the real LingoGenie tool is ready. |
-| **Aura EPS Tool** ⚙️ | Live | Hides the dashboard and shows the full EPS Translation Tool |
-| **New Tool** 🔜 | Coming Soon | Static display card — no click action |
-| **New Tool** 🔜 | Coming Soon | Static display card — no click action |
+| `index.html` | `react-app/dist/index.html` | Frontend entry point. It coordinates state mounting and includes references to the CSS/JS bundles. |
+| `favicon.svg` | `react-app/dist/favicon.svg` | Browser tab icon. |
+| `icons.svg` | `react-app/dist/icons.svg` | Global SVG icons used throughout the UI. |
+| `api.php` | Root directory `/api.php` | Secure server-side proxy handling private keys for CloudConvert, Google Sheets logging, and Gemini AI. |
+| `assets/` | `react-app/dist/assets/` | Folder containing the compiled JS and CSS bundles. |
 
-**To update the LingoGenie URL:** Find `launchTool()` in `index.html` (around line 3480) and update:
-```javascript
-window.open('https://lingochaps.com', '_blank'); // ← Replace this URL
+---
+
+## 2. Zero-Configuration Environment Setup
+
+The application features smart environment auto-detection built directly into the source code. Your team member **does not need to modify any code or configure environment variables** to deploy to different directories.
+
+### A. Dynamic API Resolution (in [api.js](file:///Users/snigdha/Desktop/eps-translator/react-app/src/services/api.js))
+*   **Localhost (`localhost`/`127.0.0.1`):** The app automatically directs its backend requests to the production backend: `https://lingochaps.com/eps-tool/api.php` to enable full testing on your laptop without hosting a local PHP server.
+*   **Live Web (Staging or Production):** The app automatically resolves calls using the relative path `api.php`. If you upload files to `/eps-tool-staging/`, it calls the staging backend; if uploaded to `/eps-tool/`, it calls the production backend.
+
+### B. Daily Free Limits Bypass (in [UploadZone.jsx](file:///Users/snigdha/Desktop/eps-translator/react-app/src/components/UploadZone.jsx))
+*   **Localhost:** Bypasses rate-limits completely for developers, letting you run test conversions indefinitely.
+*   **Staging / Production:** Activates the local storage-based conversion limit (5 complete file processes per day) to protect CloudConvert usage and costs.
+
+### C. Secure Server-Side AI Translation
+In the root [api.php](file:///Users/snigdha/Desktop/eps-translator/api.php), we added the `ai-translate` action. It connects securely to the **Gemini 2.5 Flash API** using cURL. To protect your keys, it uses strict JSON schema formats so that translations are returned as a validated map.
+
+### D. Separate Keys for Staging vs. Production (in [api.php](file:///Users/snigdha/Desktop/eps-translator/api.php))
+If your team member ever wants staging test logs to write to a separate spreadsheet, or wants to test with a different Gemini key, they only need to open the staging `api.php` on the server and edit the values at the top of the file:
+```php
+define('CLOUDCONVERT_API_KEY', 'your_key');
+define('GOOGLE_SHEETS_URL', 'your_google_sheets_url');
+define('GEMINI_API_KEY', 'your_api_key');
 ```
+*Note: If they do not need separate environments, they can leave the keys exactly as they are. They will work perfectly in both directories.*
+
+---
+
+## 3. Deployment Guide (WordPress / Hostinger)
+
+Since the app compiles into standard static assets, your WordPress administrator **does not need to install React or Node.js**. They just need to upload the static folder.
+
+### Step-by-Step Upload Instructions
+1.  **Build the Project:** Run `npm run build` inside the `react-app/` directory (Vite is pre-configured with `base: './'` to ensure relative path compatibility).
+2.  **Create a Deployable Package:** 
+    *   Open `react-app/dist/`.
+    *   Copy [api.php](file:///Users/snigdha/Desktop/eps-translator/api.php) from the root folder into `react-app/dist/`.
+    *   Zip all contents inside `react-app/dist/` (e.g. `eps-tool.zip`).
+3.  **Upload to Server:** 
+    *   Open **WP File Manager** or connect via FTP.
+    *   Create a subfolder under `public_html/` (e.g. `eps-tool` or `eps-tool-staging`).
+    *   Upload and extract `eps-tool.zip` in that folder.
+    *   Delete the `.zip` file from the server.
 
 ---
 
 ## 4. Google Authentication & Session Persistence
 
-**How it works:**
-1. The lockscreen loads with the Google Sign-In button rendered by the GSI library.
-2. **Client ID:** `366085231938-v2dajqpl5u86o5sneoqhggv6u6hlmfpr.apps.googleusercontent.com`
-3. After sign-in, `handleGoogleSignIn()` is triggered — it decodes the JWT token, stores the user's name/email/picture in `window._loggedInUser`, silently logs to Google Sheets, saves the credentials to `localStorage`, and shows Step 2 (Captcha).
-4. After the captcha is ticked, `simulateCaptchaCheck()` runs the unlock animation, saves captcha completion to `localStorage`, and reveals the Tools Dashboard.
-
-**Session Persistence on Refresh:**
-*   **User Login Session:** Login state and captcha verification are stored in the browser's `localStorage` (keys: `aura_logged_in`, `aura_user`, `aura_captcha_passed`, `aura_active_view`). On page refresh, if a session exists, the lockscreen is bypassed entirely and the user is returned to their last active view (either the **Tools Dashboard** or **Aura EPS Tool**).
-*   **Active File Session:** The currently uploaded file (SVG content), the filename, the current translation states, visual editor coordinates, and font sizes are saved in `sessionStorage` (keys: `aura_svg_text`, `aura_filename`, `aura_labels`, `aura_step`). If a user refreshes the page while inside the **Aura EPS Tool**, their progress is restored instantly to the exact step they were on **without having to upload the file again or consume another CloudConvert API credit**. Clicking "Start Over" or "Sign Out" clears this session cache.
-
-**Navigation & Account Controls:**
-*   **Tools Dashboard Top Bar:** Includes user profile info (name + avatar) and a **"Sign Out"** button.
-*   **Aura EPS Tool Top Bar:** Added a dedicated dark-themed top bar containing a **"← Back to Dashboard"** button (to return to tool selection), user profile info, and a **"Sign Out"** button.
-*   **Sign Out Action:** Clicking "Sign Out" in either view clears all session keys from `localStorage` and reloads the page to return the user to the Google Auth lockscreen.
-
-**Google Cloud Console Configuration:**
-*   **Project Name:** Aura Translator
-*   **Console URL:** `console.cloud.google.com`
-*   **Credentials:** APIs & Services → Credentials → "Aura Translator" OAuth 2.0 Client
-*   **Authorized JavaScript Origins** (must match exactly, no trailing slash):
-    *   `https://lingochaps.com`
+*   **Client ID:** `366085231938-v2dajqpl5u86o5sneoqhggv6u6hlmfpr.apps.googleusercontent.com`
+*   **Authorized JavaScript Origins** (Configured in Google Cloud Console):
+    *   `http://localhost:5173` (Local Dev)
+    *   `http://localhost:8000` (Local Alternate)
+    *   `https://lingochaps.com` (Live Production and Staging)
 
 > [!WARNING]
-> If the domain changes or a staging URL is added, the new URL must be added to the Authorized JavaScript Origins list in Google Cloud Console, or a `400 origin_mismatch` error will occur. After saving, wait up to 30 minutes for Google's servers to propagate the change.
-
-**App Publishing Status:**
-*   **Testing mode:** Only manually added Test Users can log in.
-*   **In Production mode:** Any Google account can log in freely. *(Recommended for public use.)*
+> If your site domain changes in the future, you must add the new domain to the Google Cloud Console credentials under **Authorized JavaScript Origins**, or logging in will trigger a `400 origin_mismatch` error.
 
 ---
 
-## 5. CloudConvert API Integration
-
-Conversion jobs are initiated and monitored by routing browser requests through the secure server-side proxy file `api.php`. This prevents client-side exposure of your private key.
-
-**API Key Location:** Stored privately as a constant in `api.php`:
-```php
-define('CLOUDCONVERT_API_KEY', 'eyJ0eXAiOiJKV1Qi...');
-```
-
-### Operation A: EPS → SVG (On File Upload)
-When a user uploads an `.eps` file:
-1. A loading spinner appears (no text shown to the user).
-2. JavaScript creates a 3-task CloudConvert job: **Upload → Convert EPS→SVG → Export URL**.
-3. The script polls CloudConvert every 2 seconds until the SVG is ready.
-4. The SVG is silently loaded into the tool for translation.
-
-### Operation B: SVG → EPS (On Download)
-When a user clicks **"Download Translated EPS ↓"**:
-1. The button shows live progress: `⏳ Converting to EPS...` → `⏳ Uploading...` → `⏳ Processing...`
-2. JavaScript creates a new CloudConvert job: **Upload SVG → Convert SVG→EPS → Export URL**.
-3. The final `.eps` file is downloaded to the user's computer.
-4. Button resets to normal after download. Shows `✅ EPS downloaded successfully!`
-
-> [!IMPORTANT]
-> Every file uses **2 conversion credits** (one for EPS→SVG on upload, one for SVG→EPS on download). The free daily limit of 10 credits effectively supports **5 complete file workflows per day**. To increase this, upgrade at [cloudconvert.com/pricing](https://cloudconvert.com/pricing).
+## 5. Security & Masking Credentials
+*   The Gemini API Key, CloudConvert Credentials, and Google Sheets URL are saved exclusively inside `api.php`.
+*   Because PHP is parsed on the server side, **no user can inspect the source code to view the keys**.
+*   **Git warning:** The root [.gitignore](file:///Users/snigdha/Desktop/eps-translator/.gitignore) is set to ignore `api.php` to prevent accidental credential uploads. Do not publish `api.php` to any public code repositories.
 
 ---
 
-## 6. Watermark
+## 6. Maintenance & Future Updates
 
-Every exported EPS file automatically contains a subtle, semi-transparent watermark in the **bottom-right corner**:
+*   **Updating UI Layouts:** Edit components inside `react-app/src/components/` ➔ run `npm run build` in `react-app/` ➔ upload the updated assets folder to the server.
+*   **Rotate Gemini Key:** Open `api.php` on the server and update `GEMINI_API_KEY` with the new value from Google AI Studio.
+*   **Change Watermark Text:** Open [QAReport.jsx](file:///Users/snigdha/Desktop/eps-translator/react-app/src/components/QAReport.jsx) and edit the text rendering parameter before compiling.
 
-`www.lingochaps.com`
-
-The font size scales automatically based on the diagram's `viewBox` dimensions so it is always proportional. The watermark is injected as an SVG `<text>` element just before the download is triggered.
-
-**To change the watermark text:** Find this line (~line 3252) in `index.html`:
-```javascript
-wmText.textContent = 'www.lingochaps.com';
-```
-
----
-
-## 7. User Login Tracking (Google Sheets)
-
-Every successful Google sign-in is silently recorded in a private Google Sheet in your Google Drive.
-
-**How it works:**
-1. `handleGoogleSignIn()` fires a silent `POST` request to your local proxy: `api.php?action=log-login`.
-2. The proxy file forwards this securely on the server to the Google Apps Script Web App. This prevents public exposure of the Web App URL.
-3. The Apps Script automatically creates a Google Sheet named **"LingoChaps Tool Users"** on the very first login, and appends a new row for every subsequent sign-in.
-
-**Google Apps Script Details:**
-*   **Script Name:** LingoChaps Login Logger
-*   **Edit URL:** [script.google.com](https://script.google.com) → "LingoChaps Login Logger"
-*   **Web App URL:** Stored securely as a constant in `api.php`.
-
-**Google Sheet columns:**
-| Column A | Column B | Column C |
-|---|---|---|
-| Timestamp (IST) | Name | Email |
-
-> [!NOTE]
-> The logging is completely silent — if it ever fails, it will never interrupt the user's experience.
-
----
-
-## 8. Maintenance & Future Updates
-
-| Task | How To Do It |
-|---|---|
-| **Update the tool UI or logic** | Edit `index.html` locally → re-upload to `eps-tool/` via WP File Manager |
-| **Check remaining CloudConvert credits** | Log in at [cloudconvert.com/dashboard](https://cloudconvert.com/dashboard) *(Production dashboard — not Sandbox)* |
-| **View who has logged in** | Open Google Drive → look for **"LingoChaps Tool Users"** spreadsheet |
-| **Add a new test user (Testing mode)** | Google Cloud Console → OAuth Consent Screen → Add Test User |
-| **Publish to Production (allow all users)** | Google Cloud Console → OAuth Consent Screen → Publish App |
-| **Update LingoGenie URL when ready** | Find `launchTool()` (~line 3480) → update `window.open(...)` URL |
-| **Change watermark text** | Find `wmText.textContent` in `index.html` → update the string |
-| **Rotate CloudConvert API Key** | cloudconvert.com → API → Keys. Update `CLOUDCONVERT_API_KEY` constant in `api.php` |
-| **Rotate Google Script URL** | Update `GOOGLE_SHEETS_URL` constant in `api.php` |
-
-> [!NOTE]
-> Updating WordPress core, themes, or plugins will **not** affect this tool as it lives in its own isolated directory (`/eps-tool/`).
