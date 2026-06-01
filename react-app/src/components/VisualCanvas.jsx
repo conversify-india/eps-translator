@@ -20,6 +20,7 @@ export default function VisualCanvas({
   const [overlapsEnabled, setOverlapsEnabled] = useState(false);
   const [globalScale, setGlobalScale] = useState(1.0);
   const [overlapCount, setOverlapCount] = useState(0);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // Sync selected label data to sidebar form state
   const selectedLabel = labels.find(l => l.id === selectedLabelId);
@@ -528,15 +529,16 @@ export default function VisualCanvas({
               <div className="control-group">
                 <div className="control-slider-val">
                   <label>Font Size</label>
-                  <span>{selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : selectedLabel.baseFontSize}px</span>
+                  <span>{Number(selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : selectedLabel.baseFontSize).toFixed(1)}px</span>
                 </div>
                 <input 
                   type="range" 
                   className="range-slider"
-                  min="4" 
+                  min="0.5" 
                   max="72" 
+                  step="0.1"
                   value={selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : selectedLabel.baseFontSize} 
-                  onChange={(e) => updateSelectedLabel('fontSizeOverride', parseInt(e.target.value))}
+                  onChange={(e) => updateSelectedLabel('fontSizeOverride', parseFloat(e.target.value))}
                 />
               </div>
 
@@ -639,7 +641,81 @@ export default function VisualCanvas({
           </div>
         </div>
 
+      {/* Collapsible User Guide Card */}
+      <div className="card" style={{ marginTop: '1.5rem', padding: '1.25rem' }}>
+        <div 
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          onClick={() => setIsGuideOpen(!isGuideOpen)}
+        >
+          <h2 style={{ margin: 0, fontSize: '0.85rem', color: '#1e293b' }}>📖 Interactive User Guide &amp; Workflow Instructions</h2>
+          <span style={{ color: '#7c3aed', fontSize: '0.8rem', fontWeight: 600 }}>{isGuideOpen ? '▲ Hide' : '▼ Show'}</span>
+        </div>
+        
+        {isGuideOpen && (
+          <div style={{ marginTop: '1.25rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+            <h3 style={{ fontSize: '0.85rem', color: '#7c3aed', marginBottom: '0.75rem', fontWeight: 700 }}>
+              🎨 Live Visual Editor Guide (Primary Workflow)
+            </h3>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.85rem 1rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#64748b', lineHeight: '1.6' }}>
+              Our <b>Live Visual Editor</b> lets you adjust translations and fix overlaps directly in the browser. You do not need to open Inkscape for layout fixes!
+            </div>
+
+            <div className="guide-step">
+              <div className="guide-num">A</div>
+              <div>
+                <div className="guide-title">Single vs. Global Editing</div>
+                <div className="guide-body">
+                  Select a label in the diagram. Toggle <b>"Apply text &amp; style changes to all occurrences"</b>:<br />
+                  • <b>Checked (Default)</b>: Any edit or resizing updates all identical words across the file.<br />
+                  • <b>Unchecked</b>: Edits the text, font size, or position of <b>only the selected instance</b>. Look at the index tracker (e.g. <code>2/5</code>) in the sidebar to verify.
+                </div>
+              </div>
+            </div>
+
+            <div className="guide-step">
+              <div className="guide-num">B</div>
+              <div>
+                <div className="guide-title">Screen-Aligned Nudging (Move Text)</div>
+                <div className="guide-body">
+                  Click a label and use your keyboard <b>Arrow keys</b> (hold <code>Shift</code> for larger steps) or slide the <b>Offset X / Y (DX/DY)</b> controls. Because nudging is screen-aligned, the text always slides in the direction you push it, even if the text is rotated 90° or 180°!
+                </div>
+              </div>
+            </div>
+
+            <div className="guide-step">
+              <div className="guide-num">C</div>
+              <div>
+                <div className="guide-title">Background Masking (Clear Wires &amp; Circles)</div>
+                <div className="guide-body">
+                  If text crosses over lines, wires, or circles in the diagram, check <b>Enable text outline (White Halo)</b>. This puts a clean white background mask behind the letters to block out underlying lines and make the text readable.
+                </div>
+              </div>
+            </div>
+
+            <div className="guide-step">
+              <div className="guide-num">D</div>
+              <div>
+                <div className="guide-title">Bulk Resizing &amp; Overlap Highlighting</div>
+                <div className="guide-body">
+                  Toggle <b>⚠️ Highlight Overlaps</b> in the top toolbar to outline colliding text blocks in red. Slide the <b>Global Scale</b> slider to dynamically shrink or enlarge all texts in the SVG in one go to fix overall layout density.
+                </div>
+              </div>
+            </div>
+
+            <div className="guide-step" style={{ borderBottom: 'none' }}>
+              <div className="guide-num">E</div>
+              <div>
+                <div className="guide-title">Undo &amp; Revert Changes</div>
+                <div className="guide-body">
+                  Want to undo overrides? Click <b>Clear Offsets</b> to restore default style overrides, or click <b>Deselect</b> to clear your current selection.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
     </div>
-  );
+  </div>
+);
 }

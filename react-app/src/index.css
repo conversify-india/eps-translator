@@ -570,3 +570,57 @@ header p {
   fill: #38bdf8 !important;
 }
 
+/* --- COLLAPSIBLE GUIDE STYLES (LIGHT THEME OPTIMIZED) --- */
+.guide-step {
+  display: flex;
+  gap: 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.guide-step:last-child {
+  border-bottom: none;
+}
+
+.guide-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f3e8ff;
+  color: #7c3aed;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.guide-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.35rem;
+}
+
+.guide-body {
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.guide-body b {
+  color: #7c3aed;
+}
+
+.guide-body code {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.72rem;
+  color: #0284c7;
+}
+
+
