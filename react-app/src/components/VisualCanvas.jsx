@@ -81,11 +81,15 @@ export default function VisualCanvas({
 
     labels.forEach((label) => {
       const ts = container.querySelector(`[data-label-id="${label.id}"]`);
-      if (!ts) return;
+      if (!ts) {
+        console.warn(`[VisualCanvas] Element not found for ID: ${label.id}`);
+        return;
+      }
 
       // Update text
       const newText = label.translation || label.source;
       if (ts.textContent !== newText) {
+        console.log(`[VisualCanvas] Updating text node ID ${label.id} from "${ts.textContent}" to "${newText}"`);
         ts.textContent = newText;
       }
 
