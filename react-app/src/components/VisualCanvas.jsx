@@ -92,6 +92,24 @@ export default function VisualCanvas({
       if (ts.textContent !== newText) {
         console.log(`[VisualCanvas] Updating text node ID ${label.id} from "${ts.textContent}" to "${newText}"`);
         ts.textContent = newText;
+
+        // Force browser layout reflow/redraw for SVG text element (fixes Chrome redraw bug)
+        try {
+          const parentText = ts.closest('text');
+          if (parentText) {
+            const currentY = parentText.getAttribute('y');
+            if (currentY) {
+              parentText.setAttribute('y', String(parseFloat(currentY) + 0.0001));
+              setTimeout(() => {
+                if (parentText.isConnected) {
+                  parentText.setAttribute('y', currentY);
+                }
+              }, 0);
+            }
+          }
+        } catch (e) {
+          // ignore reflow errors
+        }
       }
 
       // Update font size (multiply by global scale)
