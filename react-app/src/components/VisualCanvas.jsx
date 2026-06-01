@@ -4,9 +4,11 @@ export default function VisualCanvas({
   svgText,
   labels,
   onLabelUpdate,
+  onBulkLabelUpdate,
   selectedLabelId,
   setSelectedLabelId,
-  onProceedClick
+  onProceedClick,
+  hasVectorOutlines
 }) {
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
@@ -22,6 +24,13 @@ export default function VisualCanvas({
   const [overlapCount, setOverlapCount] = useState(0);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [applyToAllSameSource, setApplyToAllSameSource] = useState(true);
+  const [forceTextVisible, setForceTextVisible] = useState(hasVectorOutlines);
+
+  useEffect(() => {
+    if (hasVectorOutlines) {
+      setForceTextVisible(true);
+    }
+  }, [hasVectorOutlines]);
 
   // HTML overlay selection highlight bounds state
   const [highlightRect, setHighlightRect] = useState(null);
@@ -69,8 +78,14 @@ export default function VisualCanvas({
   const selectedLabel = labels.find(l => l.id === selectedLabelId);
 
   // ── 1. Apply Translations & Overrides directly to DOM ──
+
+  // Helper: detect if text contains non-Latin scripts needing special fonts
+  const needsNotoFont = (text) => {
+    // Cyrillic, CJK, Hiragana, Katakana, Devanagari, Arabic, Hebrew, Korean
+    return /[\u0400-\u04FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\u0900-\u097F\u0600-\u06FF\u0590-\u05FF\uAC00-\uD7AF]/.test(text);
+  };
+
   useEffect(() => {
-    console.log('[VisualCanvas] useEffect triggered. contentRef.current:', contentRef.current, 'labels:', labels);
     const container = contentRef.current;
     if (!container) return;
 
@@ -113,10 +128,23 @@ export default function VisualCanvas({
       }
 
       // Update font size (multiply by global scale)
+      // Enforce minimum 6px so tiny CAD labels (e.g. 1.5px) are readable in the editor
       const fs = label.fontSizeOverride !== undefined 
         ? label.fontSizeOverride 
         : label.baseFontSize;
-      ts.style.fontSize = (fs * globalScale) + 'px';
+      const renderedFs = Math.max(fs * globalScale, 6);
+      ts.style.fontSize = renderedFs + 'px';
+
+      // ── Smart font-family: ONLY switch to Noto for non-Latin scripts ──
+      // Keeping original font for Latin translations preserves exact character metrics
+      // so text fits the same space as the original without overflow.
+      const translatedText = label.translation || label.source;
+      if (needsNotoFont(translatedText)) {
+        ts.style.fontFamily = "'Noto Sans', 'Noto Sans Devanagari', 'Noto Naskh Arabic', 'Noto Sans CJK SC', Arial, sans-serif";
+      } else {
+        // Keep original font-family — don't override it, let the SVG attribute control it
+        ts.style.fontFamily = '';
+      }
 
       // Update dx/dy offsets
       if (label.dxOverride !== undefined) {
@@ -138,17 +166,129 @@ export default function VisualCanvas({
         ts.style.letterSpacing = '';
       }
 
-      // Update halo glow filter
-      if (label.haloOverride) {
+      // ── Halo filter: only apply to labels that explicitly need it ──
+      // Never blanket-apply to all labels when forceTextVisible is on — applying SVG
+      // filters to hundreds of elements simultaneously crashes the renderer.
+      const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+      const needsHalo = label.haloOverride || (forceTextVisible && label.isOriginalInvisible);
+      if (needsHalo) {
         ts.setAttribute('filter', 'url(#text-halo)');
+        if (parentTextEl && parentTextEl !== ts) {
+          parentTextEl.setAttribute('filter', 'url(#text-halo)');
+        }
       } else {
         ts.removeAttribute('filter');
+        if (parentTextEl && parentTextEl !== ts) {
+          parentTextEl.removeAttribute('filter');
+        }
+      }
+
+      // Update visibility & color overrides for vectorized elements
+      if (forceTextVisible) {
+        ts.style.fill = label.textColorOverride || 'currentColor';
+        ts.style.opacity = '1';
+        ts.style.fillOpacity = '1';
+        ts.style.visibility = 'visible';
+        ts.style.display = 'inline';
+
+        // ── CRITICAL FIX: Traverse ALL ancestor elements up to SVG root ──
+        // CAD tools often nest text inside <g> groups with opacity=0 / display=none.
+        // We must force every ancestor group visible, not just the immediate <text> parent.
+        const svgRoot = ts.closest('svg');
+        let ancestor = ts.parentElement;
+        while (ancestor && ancestor !== svgRoot && ancestor !== container) {
+          const tag = ancestor.tagName.toLowerCase();
+          // Force the ancestor visible
+          ancestor.style.opacity = '1';
+          ancestor.style.visibility = 'visible';
+          ancestor.style.display = tag === 'g' ? 'inline' : ancestor.style.display || '';
+          // Fix fill:none on <text> elements so text has a colour
+          if (tag === 'text') {
+            if (ancestor.getAttribute('fill') === 'none' && !label.textColorOverride) {
+              ancestor.style.fill = 'currentColor';
+            } else {
+              ancestor.style.fill = label.textColorOverride || ancestor.style.fill || '';
+            }
+          }
+          ancestor = ancestor.parentElement;
+        }
+      } else {
+        if (label.isOriginalInvisible) {
+          ts.style.fill = 'none';
+          ts.style.opacity = '0';
+          ts.style.fillOpacity = '0';
+          const parentText = ts.closest('text');
+          if (parentText) {
+            parentText.style.fill = 'none';
+            parentText.style.opacity = '0';
+            parentText.style.fillOpacity = '0';
+          }
+        } else {
+          ts.style.fill = label.textColorOverride || '';
+          ts.style.opacity = '';
+          ts.style.fillOpacity = '';
+          const parentText = ts.closest('text');
+          if (parentText) {
+            parentText.style.fill = label.textColorOverride || '';
+            parentText.style.opacity = '';
+            parentText.style.fillOpacity = '';
+          }
+        }
       }
     });
 
+    // ── Inject white mask rects for EPS mode (covers original vector path outlines) ──
+    // This is the most reliable way to hide the original path-drawn letters and
+    // show only the translated text, making the output look identical in layout.
+    if (svgEl && forceTextVisible) {
+      const NS = 'http://www.w3.org/2000/svg';
+      let maskGroup = svgEl.getElementById('translation-white-masks');
+      if (!maskGroup) {
+        maskGroup = svgEl.ownerDocument.createElementNS(NS, 'g');
+        maskGroup.setAttribute('id', 'translation-white-masks');
+        maskGroup.setAttribute('style', 'pointer-events: none;');
+      } else {
+        maskGroup.innerHTML = ''; // Clear old masks
+      }
+
+      let masksAdded = 0;
+      labels.forEach(label => {
+        const ts = container.querySelector(`[data-label-id="${label.id}"]`);
+        if (!ts) return;
+        const textEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+        if (!textEl) return;
+        try {
+          const bbox = textEl.getBBox();
+          if (bbox.width < 1 && bbox.height < 1) return; // nothing rendered yet
+          const pad = Math.max(bbox.height * 0.5, 2); // padding proportional to text height
+          const rect = svgEl.ownerDocument.createElementNS(NS, 'rect');
+          rect.setAttribute('x',      (bbox.x - pad).toFixed(3));
+          rect.setAttribute('y',      (bbox.y - pad).toFixed(3));
+          rect.setAttribute('width',  (bbox.width  + pad * 2).toFixed(3));
+          rect.setAttribute('height', (bbox.height + pad * 2).toFixed(3));
+          rect.setAttribute('fill', 'white');
+          maskGroup.appendChild(rect);
+          masksAdded++;
+        } catch (_) {
+          // getBBox can throw for hidden/unrendered elements — safe to ignore
+        }
+      });
+
+      // Safely append the mask group to SVG (at the end = on top of paths, white rects
+      // are covered by the text elements which are also at the SVG end in EPS files).
+      // Using insertBefore on a non-direct-child throws a DOMException, so use appendChild.
+      if (masksAdded > 0) {
+        svgEl.appendChild(maskGroup);
+      }
+    } else if (svgEl) {
+      // Remove masks when forceTextVisible is off
+      const oldMaskGroup = svgEl.getElementById('translation-white-masks');
+      if (oldMaskGroup) oldMaskGroup.remove();
+    }
+
     // Redraw bounding boxes
     updateHighlights();
-  }, [labels, globalScale]);
+  }, [labels, globalScale, forceTextVisible]);
 
   // ── 2. Handle Highlights & Overlaps ──
   const updateHighlights = () => {
@@ -234,24 +374,27 @@ export default function VisualCanvas({
       defs = svgRoot.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'defs');
       svgRoot.insertBefore(defs, svgRoot.firstChild);
     }
-    if (!defs.querySelector('#text-halo')) {
-      const filter = svgRoot.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'filter');
-      filter.setAttribute('id', 'text-halo');
-      filter.setAttribute('x', '-15%');
-      filter.setAttribute('y', '-15%');
-      filter.setAttribute('width', '130%');
-      filter.setAttribute('height', '130%');
-      filter.innerHTML = `
-        <feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="2" />
-        <feFlood flood-color="#ffffff" flood-opacity="1" result="flooded" />
-        <feComposite in="flooded" in2="dilated" operator="in" result="outline" />
-        <feMerge>
-          <feMergeNode in="outline" />
-          <feMergeNode in="SourceGraphic" />
-        </feMerge>
-      `;
-      defs.appendChild(filter);
-    }
+    // Remove stale filter so we always recreate with the correct radius
+    const existing = defs.querySelector('#text-halo');
+    if (existing) existing.remove();
+
+    const filter = svgRoot.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    filter.setAttribute('id', 'text-halo');
+    filter.setAttribute('x', '-25%');
+    filter.setAttribute('y', '-25%');
+    filter.setAttribute('width', '150%');
+    filter.setAttribute('height', '150%');
+    // radius=6 gives a thick enough white background to cover typical EPS vector path strokes
+    filter.innerHTML = `
+      <feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="6" />
+      <feFlood flood-color="#ffffff" flood-opacity="1" result="flooded" />
+      <feComposite in="flooded" in2="dilated" operator="in" result="outline" />
+      <feMerge>
+        <feMergeNode in="outline" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    `;
+    defs.appendChild(filter);
   };
 
   const detectOverlapsList = () => {
@@ -414,6 +557,17 @@ export default function VisualCanvas({
     setPanY(0);
   };
 
+  // ── Inject SVG once into DOM (avoids dangerouslySetInnerHTML wiping DOM text edits on re-render) ──
+  const svgInjectedRef = useRef('');
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container || !svgText) return;
+    // Only re-inject if the SVG source actually changed (e.g. new file uploaded)
+    if (svgInjectedRef.current === svgText) return;
+    svgInjectedRef.current = svgText;
+    container.innerHTML = svgText;
+  }, [svgText]);
+
   // Run ZoomToFit on initial load
   useEffect(() => {
     zoomToFit();
@@ -438,7 +592,8 @@ export default function VisualCanvas({
       letterSpacingOverride: undefined,
       dxOverride: undefined,
       dyOverride: undefined,
-      haloOverride: false
+      haloOverride: false,
+      textColorOverride: undefined
     };
     if (applyToAllSameSource) {
       const targetSource = selectedLabel.source;
@@ -449,8 +604,79 @@ export default function VisualCanvas({
     }
   };
 
+  // ── Auto-Fit: shrink overflowing labels to fit their original spatial allocation ──
+  const [isAutoFitting, setIsAutoFitting] = useState(false);
+
+  const handleAutoFit = () => {
+    const container = contentRef.current;
+    if (!container || !onBulkLabelUpdate) return;
+
+    setIsAutoFitting(true);
+
+    // Let the DOM fully settle with current translations before measuring
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const updates = [];
+
+        labels.forEach(label => {
+          const ts = container.querySelector(`[data-label-id="${label.id}"]`);
+          if (!ts) return;
+          const rect = ts.getBoundingClientRect();
+          if (rect.width === 0) return; // invisible, skip
+
+          const src = (label.source || '').trim();
+          const trn = (label.translation || label.source || '').trim();
+
+          if (!trn || src === trn) return; // unchanged — no scaling needed
+
+          const srcLen = src.length;
+          const trnLen = trn.length;
+          if (trnLen === 0 || srcLen === 0) return;
+
+          // Only shrink labels where translation is longer than source
+          const lengthRatio = srcLen / trnLen;
+          if (lengthRatio >= 1) return; // translated is same length or shorter — fits fine
+
+          const currentFs = label.fontSizeOverride !== undefined
+            ? label.fontSizeOverride
+            : label.baseFontSize;
+
+          // Scale font down proportionally, floor at 40% of original baseFontSize
+          const targetFs = Math.max(
+            currentFs * lengthRatio,
+            label.baseFontSize * 0.4
+          );
+
+          if (Math.abs(targetFs - currentFs) > 0.2) {
+            updates.push({
+              id: label.id,
+              fontSizeOverride: parseFloat(targetFs.toFixed(2)),
+              is_flagged: false
+            });
+          }
+        });
+
+        if (updates.length > 0) {
+          onBulkLabelUpdate(updates);
+        }
+
+        setIsAutoFitting(false);
+      });
+    });
+  };
+
+  const handleResetFontSizes = () => {
+    if (!onBulkLabelUpdate) return;
+    const resets = labels.map(l => ({
+      id: l.id,
+      fontSizeOverride: undefined,
+      is_flagged: (l.translation || '').trim().length > (l.source || '').trim().length
+    }));
+    onBulkLabelUpdate(resets);
+  };
+
   return (
-    <div className="card" style={{ padding: '0', background: 'transparent', border: 'none', boxShadow: 'none' }}>
+    <div className="card" id="section-visual-canvas" style={{ padding: '0', background: 'transparent', border: 'none', boxShadow: 'none' }}>
       <div className="editor-layout">
         
         {/* Left Side: Visual Vector Canvas */}
@@ -466,7 +692,20 @@ export default function VisualCanvas({
               </span>
             </div>
 
-            <div className="toolbar-group">
+            <div className="toolbar-group" style={{ gap: '0.4rem' }}>
+              <button 
+                className={`toolbar-btn ${forceTextVisible ? 'active' : ''}`} 
+                onClick={() => setForceTextVisible(!forceTextVisible)}
+                style={{
+                  background: forceTextVisible ? '#7c3aed' : '',
+                  color: forceTextVisible ? '#fff' : '',
+                  borderColor: forceTextVisible ? '#7c3aed' : ''
+                }}
+                title="Force Vector Outline Texts to be Visible"
+              >
+                👁️ Force Text Visible
+              </button>
+
               <button 
                 className={`toolbar-btn ${overlapsEnabled ? 'active' : ''}`} 
                 onClick={() => setOverlapsEnabled(!overlapsEnabled)}
@@ -477,6 +716,39 @@ export default function VisualCanvas({
                 }}
               >
                 ⚠️ Overlaps: {overlapCount}
+              </button>
+
+              {/* Auto-Fit button */}
+              <button
+                className="toolbar-btn"
+                onClick={handleAutoFit}
+                disabled={isAutoFitting}
+                title="Auto-shrink overflowing translated labels to fit their original space"
+                style={{
+                  background: isAutoFitting ? '#f3e8ff' : '#ecfdf5',
+                  color: isAutoFitting ? '#7c3aed' : '#059669',
+                  borderColor: isAutoFitting ? '#a78bfa' : '#6ee7b7',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {isAutoFitting ? '⏳ Fitting...' : '✨ Auto-Fit'}
+              </button>
+
+              {/* Reset font sizes button */}
+              <button
+                className="toolbar-btn"
+                onClick={handleResetFontSizes}
+                title="Reset all font size overrides back to original"
+                style={{
+                  background: '#fff7ed',
+                  color: '#d97706',
+                  borderColor: '#fcd34d',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ↺ Reset Sizes
               </button>
 
               <div className="control-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.4rem' }}>
@@ -519,7 +791,6 @@ export default function VisualCanvas({
               ref={contentRef}
               id="canvasContent"
               className="canvas-content"
-              dangerouslySetInnerHTML={{ __html: svgText }}
               style={{
                 position: 'absolute',
                 transformOrigin: '0 0',
@@ -682,6 +953,36 @@ export default function VisualCanvas({
                   value={selectedLabel.dyOverride !== undefined ? selectedLabel.dyOverride : 0} 
                   onChange={(e) => updateSelectedLabel('dyOverride', parseInt(e.target.value))}
                 />
+              </div>
+
+              {/* Text Color Selector */}
+              <div className="control-group">
+                <div className="control-slider-val">
+                  <label>Text Color</label>
+                </div>
+                <select 
+                  value={selectedLabel.textColorOverride || 'currentColor'} 
+                  onChange={(e) => updateSelectedLabel('textColorOverride', e.target.value)}
+                  style={{
+                    background: '#1f2937',
+                    border: '1px solid #374151',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    padding: '0.5rem 0.75rem',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    width: '100%',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="currentColor">Auto (Current Color)</option>
+                  <option value="#000000">⬛ Black</option>
+                  <option value="#ffffff">⬜ White</option>
+                  <option value="#1e3a8a">🟦 Dark Blue</option>
+                  <option value="#b91c1c">🟥 Red</option>
+                  <option value="#15803d">🟩 Green</option>
+                  <option value="#b45309">🟨 Amber</option>
+                </select>
               </div>
 
               {/* Text Halo Toggle */}

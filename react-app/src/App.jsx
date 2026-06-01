@@ -22,6 +22,7 @@ export default function App() {
   const [filename, setFilename] = useState('');
   const [svgText, setSvgText] = useState('');
   const [labels, setLabels] = useState([]);
+  const [hasVectorOutlines, setHasVectorOutlines] = useState(false);
   const [uniqueSourceTexts, setUniqueSourceTexts] = useState([]);
   const [selectedLabelId, setSelectedLabelId] = useState(null);
 
@@ -43,6 +44,7 @@ export default function App() {
     const cachedLabels = sessionStorage.getItem('aura_labels');
     const cachedStep = sessionStorage.getItem('aura_step');
     const cachedMaxStep = sessionStorage.getItem('aura_max_step');
+    const cachedHasVectorOutlines = sessionStorage.getItem('aura_has_vector_outlines');
 
     if (cachedSvg && cachedFilename && cachedLabels) {
       try {
@@ -51,6 +53,9 @@ export default function App() {
         setFilename(cachedFilename);
         setLabels(parsedLabels);
         setUniqueSourceTexts(Array.from(new Set(parsedLabels.map(l => l.source))));
+        if (cachedHasVectorOutlines) {
+          setHasVectorOutlines(cachedHasVectorOutlines === 'true');
+        }
         
         if (cachedStep) setStep(parseInt(cachedStep));
         if (cachedMaxStep) setMaxUnlockedStep(parseInt(cachedMaxStep));
@@ -69,8 +74,9 @@ export default function App() {
       sessionStorage.setItem('aura_labels', JSON.stringify(labels));
       sessionStorage.setItem('aura_step', step.toString());
       sessionStorage.setItem('aura_max_step', maxUnlockedStep.toString());
+      sessionStorage.setItem('aura_has_vector_outlines', hasVectorOutlines.toString());
     }
-  }, [activeView, svgText, filename, labels, step, maxUnlockedStep]);
+  }, [activeView, svgText, filename, labels, step, maxUnlockedStep, hasVectorOutlines]);
 
   // ── 3. Handle auth transitions ──
   const handleLoginSuccess = (profile) => {
@@ -104,12 +110,13 @@ export default function App() {
   // ── 4. Translation Tool handlers ──
   const handleConversionSuccess = (rawSvgText, uploadedFilename) => {
     try {
-      const { updatedSvgString, parsedLabels } = parseSVGString(rawSvgText);
+      const { updatedSvgString, parsedLabels, hasVectorOutlines } = parseSVGString(rawSvgText);
       
       setSvgText(updatedSvgString);
       setFilename(uploadedFilename);
       setLabels(parsedLabels);
       setUniqueSourceTexts(Array.from(new Set(parsedLabels.map(l => l.source))));
+      setHasVectorOutlines(hasVectorOutlines || false);
       
       setStep(2);
       setMaxUnlockedStep(2);
@@ -144,6 +151,17 @@ export default function App() {
     }));
   };
 
+  // Bulk update: accepts an array of { id, ...fields } — each label gets its own set of updates
+  const handleBulkLabelUpdate = (updatesArray) => {
+    const updateMap = new Map(updatesArray.map(u => [u.id, u]));
+    setLabels(prev => prev.map(label => {
+      const upd = updateMap.get(label.id);
+      if (!upd) return label;
+      const { id: _id, ...fields } = upd;
+      return { ...label, ...fields };
+    }));
+  };
+
   const handleViewInCanvas = (id) => {
     setSelectedLabelId(id);
     setStep(4);
@@ -175,6 +193,7 @@ export default function App() {
     setLabels([]);
     setUniqueSourceTexts([]);
     setSelectedLabelId(null);
+    setHasVectorOutlines(false);
     setStep(1);
     setMaxUnlockedStep(1);
   };
@@ -239,6 +258,9 @@ export default function App() {
                 setStep(3);
                 setMaxUnlockedStep(prev => Math.max(prev, 3));
               }}
+              hasVectorOutlines={hasVectorOutlines}
+              user={user}
+              svgText={svgText}
             />
           )}
 
@@ -259,12 +281,14 @@ export default function App() {
               svgText={svgText}
               labels={labels}
               onLabelUpdate={handleLabelUpdate}
+              onBulkLabelUpdate={handleBulkLabelUpdate}
               selectedLabelId={selectedLabelId}
               setSelectedLabelId={setSelectedLabelId}
               onProceedClick={() => {
                 setStep(5);
                 setMaxUnlockedStep(prev => Math.max(prev, 5));
               }}
+              hasVectorOutlines={hasVectorOutlines}
             />
           )}
 

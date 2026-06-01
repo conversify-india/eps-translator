@@ -82,6 +82,30 @@ export const apiService = {
       throw new Error(errMessage || `Server error (Status ${res.status})`);
     }
     return res.json();
+  },
+
+  /**
+   * Sends a proposal request email to the team with target language, customer info, and original file attachment
+   */
+  async sendProposalEmail({ name, email, filename, targetLanguage, svgText, message }) {
+    const res = await fetch(getApiUrl('send-proposal'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, filename, targetLanguage, svgText, message })
+    });
+    if (!res.ok) {
+      let errMessage = '';
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.error) {
+          errMessage = errJson.error;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errMessage || `Server error (Status ${res.status})`);
+    }
+    return res.json();
   }
 };
 

@@ -2,6 +2,19 @@ import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { showToast } from '../hooks/useToast';
 
+// Detect if a label is a pure technical code that intentionally stayed unchanged
+function isTechnicalCode(source, translation) {
+  if (!source || source !== translation) return false;
+  const s = source.trim();
+  if (/^\d+$/.test(s)) return true;
+  if (/^\d+(\.\d+)?\s*[AaVvWwΩ]$/.test(s)) return true;
+  if (/^[A-Z]?\d+[a-zA-Z]?$/.test(s)) return true;
+  const universalCodes = new Set(['GND','VCC','VDD','ECU','ECM','ABS','CAN','PWM','LED','AC','DC','IC','PCB','CPU','USB','IN','OUT','COM','NC','NO','N','S','E','W','B','R','Y','G']);
+  if (universalCodes.has(s.toUpperCase())) return true;
+  if (/^[A-Za-z]$/.test(s)) return true;
+  return false;
+}
+
 export default function QAReport({
   filename,
   labels,
@@ -14,6 +27,7 @@ export default function QAReport({
   const [loadingMsg, setLoadingMsg] = useState('Preparing your EPS file...');
   const [loadingSubtext, setLoadingSubtext] = useState('Structuring translated vectors...');
   const [showWarning, setShowWarning] = useState(false);
+  const [exportingSvg, setExportingSvg] = useState(false);
 
   const loadingMessages = [
     "Structuring translated vectors...",
@@ -42,13 +56,133 @@ export default function QAReport({
 
   const getStats = () => {
     const total = labels.length;
-    const replaced = labels.filter(l => l.translation && l.translation.trim() !== '').length;
-    const skipped = total - replaced;
+    const techcode = labels.filter(l => isTechnicalCode((l.source || '').trim(), (l.translation || '').trim())).length;
+    const genuineTranslated = labels.filter(l => {
+      const t = (l.translation || '').trim();
+      const s = (l.source || '').trim();
+      return t && t !== s;
+    }).length;
+    const unchanged = labels.filter(l => {
+      const t = (l.translation || '').trim();
+      const s = (l.source || '').trim();
+      return t && t === s && !isTechnicalCode(s, t);
+    }).length;
+    const missing = labels.filter(l => !l.translation || l.translation.trim() === '').length;
     const shrunk = labels.filter(l => l.fontSizeOverride !== undefined && l.fontSizeOverride < l.baseFontSize).length;
-    return { total, replaced, skipped, shrunk };
+    return { total, genuineTranslated, techcode, unchanged, missing, shrunk };
   };
 
-  const { total, replaced, skipped, shrunk } = getStats();
+  const { total, genuineTranslated, techcode, unchanged, missing, shrunk } = getStats();
+
+  // Build finalized SVG doc with all translations applied
+  const buildFinalSvg = () => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgText, 'image/svg+xml');
+    const svgRoot = doc.querySelector('svg');
+    if (!svgRoot) throw new Error('Invalid SVG content.');
+
+    labels.forEach((label) => {
+      const ts = doc.querySelector(`[data-label-id="${label.id}"]`);
+      if (!ts) return;
+      ts.textContent = label.translation || label.source;
+      const fs = label.fontSizeOverride !== undefined ? label.fontSizeOverride : label.baseFontSize;
+      ts.style.fontSize = (fs * (globalScale || 1)) + 'px';
+
+      // Smart font-family: only switch to Noto Sans when translation uses non-Latin scripts.
+      // Preserving the original font for Latin translations keeps exact character metrics
+      // so the export looks identical in spacing and layout to the source file.
+      const translatedText = label.translation || label.source;
+      const needsNoto = /[\u0400-\u04FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\u0900-\u097F\u0600-\u06FF\u0590-\u05FF\uAC00-\uD7AF]/.test(translatedText);
+      if (needsNoto) {
+        ts.style.fontFamily = "'Noto Sans', 'Noto Sans Devanagari', 'Noto Naskh Arabic', 'Noto Sans CJK SC', Arial, sans-serif";
+      } else {
+        ts.style.fontFamily = ''; // keep original SVG font attribute
+      }
+
+      if (label.dxOverride !== undefined) ts.setAttribute('dx', label.dxOverride); else ts.removeAttribute('dx');
+      if (label.dyOverride !== undefined) ts.setAttribute('dy', label.dyOverride); else ts.removeAttribute('dy');
+      if (label.letterSpacingOverride !== undefined) ts.style.letterSpacing = label.letterSpacingOverride + 'px'; else ts.style.letterSpacing = '';
+
+      if (label.haloOverride || label.isOriginalInvisible) {
+        let defs = svgRoot.querySelector('defs');
+        if (!defs) { defs = doc.createElementNS('http://www.w3.org/2000/svg', 'defs'); svgRoot.insertBefore(defs, svgRoot.firstChild); }
+        const oldFilter = defs.querySelector('#text-halo');
+        if (oldFilter) oldFilter.remove();
+        const filter = doc.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        filter.setAttribute('id', 'text-halo');
+        filter.setAttribute('x', '-25%'); filter.setAttribute('y', '-25%');
+        filter.setAttribute('width', '150%'); filter.setAttribute('height', '150%');
+        // radius=6 covers typical EPS vector path stroke widths
+        filter.innerHTML = `<feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="6" /><feFlood flood-color="#ffffff" flood-opacity="1" result="flooded" /><feComposite in="flooded" in2="dilated" operator="in" result="outline" /><feMerge><feMergeNode in="outline" /><feMergeNode in="SourceGraphic" /></feMerge>`;
+        defs.appendChild(filter);
+        // Apply on both tspan and parent text element for full coverage
+        ts.setAttribute('filter', 'url(#text-halo)');
+        const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+        if (parentTextEl && parentTextEl !== ts) parentTextEl.setAttribute('filter', 'url(#text-halo)');
+      } else {
+        ts.removeAttribute('filter');
+        const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+        if (parentTextEl && parentTextEl !== ts) parentTextEl.removeAttribute('filter');
+      }
+
+      if (label.isOriginalInvisible) {
+        ts.style.fill = label.textColorOverride || 'currentColor';
+        ts.style.opacity = '1'; ts.style.fillOpacity = '1'; ts.style.visibility = 'visible'; ts.style.display = 'inline';
+        let ancestor = ts.parentElement;
+        while (ancestor && ancestor !== svgRoot) {
+          const tag = ancestor.tagName.toLowerCase();
+          ancestor.style.opacity = '1'; ancestor.style.visibility = 'visible'; ancestor.style.display = tag === 'g' ? 'inline' : ancestor.style.display || '';
+          if (tag === 'text') { ancestor.style.fill = ancestor.getAttribute('fill') === 'none' && !label.textColorOverride ? 'currentColor' : (label.textColorOverride || ancestor.style.fill || ''); }
+          ancestor = ancestor.parentElement;
+        }
+      } else if (label.textColorOverride) {
+        ts.style.fill = label.textColorOverride;
+        const parentText = ts.closest('text');
+        if (parentText) parentText.style.fill = label.textColorOverride;
+      }
+    });
+
+    return { doc, svgRoot };
+  };
+
+  const handleDownloadSvg = () => {
+    try {
+      setExportingSvg(true);
+      const { doc, svgRoot } = buildFinalSvg();
+
+      // Inject watermark
+      const wmNS = 'http://www.w3.org/2000/svg';
+      const vb = svgRoot.getAttribute('viewBox');
+      let wmX = 300, wmY = 300, wmFontSize = 10;
+      if (vb) {
+        const parts = vb.split(/[\s,]+/);
+        if (parts.length === 4) {
+          const vbX = parseFloat(parts[0]), vbY = parseFloat(parts[1]), vbW = parseFloat(parts[2]), vbH = parseFloat(parts[3]);
+          wmFontSize = Math.max(6, Math.min(12, vbW * 0.018));
+          wmX = vbX + vbW - wmFontSize * 0.5; wmY = vbY + vbH - wmFontSize * 0.4;
+        }
+      }
+      const wmText = doc.createElementNS(wmNS, 'text');
+      wmText.setAttribute('x', wmX); wmText.setAttribute('y', wmY); wmText.setAttribute('font-size', wmFontSize);
+      wmText.setAttribute('font-family', 'Arial, sans-serif'); wmText.setAttribute('fill', 'rgba(100, 100, 100, 0.45)');
+      wmText.setAttribute('text-anchor', 'end'); wmText.textContent = 'www.lingochaps.com';
+      svgRoot.appendChild(wmText);
+
+      const serializedSvg = new XMLSerializer().serializeToString(doc);
+      const svgBlob = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
+      const cleanFilename = filename ? filename.replace(/\.(eps|svg)$/i, '') : 'drawing';
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(svgBlob);
+      link.download = cleanFilename + '_translated.svg';
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      showToast('SVG downloaded successfully!', 'success');
+    } catch (err) {
+      showToast('SVG export failed: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      setExportingSvg(false);
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -59,75 +193,7 @@ export default function QAReport({
 
     try {
       // 1. Build the final SVG Document in memory
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svgText, 'image/svg+xml');
-      const svgRoot = doc.querySelector('svg');
-
-      if (!svgRoot) throw new Error('Invalid SVG content.');
-
-      // Apply translations & styles to the finalized export SVG
-      labels.forEach((label) => {
-        const ts = doc.querySelector(`[data-label-id="${label.id}"]`);
-        if (!ts) return;
-
-        // Apply translated text
-        ts.textContent = label.translation || label.source;
-
-        // Apply font size overrides (including global scale)
-        const fs = label.fontSizeOverride !== undefined ? label.fontSizeOverride : label.baseFontSize;
-        ts.style.fontSize = (fs * globalScale) + 'px';
-
-        // Apply offset positions
-        if (label.dxOverride !== undefined) {
-          ts.setAttribute('dx', label.dxOverride);
-        } else {
-          ts.removeAttribute('dx');
-        }
-
-        if (label.dyOverride !== undefined) {
-          ts.setAttribute('dy', label.dyOverride);
-        } else {
-          ts.removeAttribute('dy');
-        }
-
-        // Apply letter spacing
-        if (label.letterSpacingOverride !== undefined) {
-          ts.style.letterSpacing = label.letterSpacingOverride + 'px';
-        } else {
-          ts.style.letterSpacing = '';
-        }
-
-        // Apply white text outline halo
-        if (label.haloOverride) {
-          // Ensure defs filter exists in export doc
-          let defs = svgRoot.querySelector('defs');
-          if (!defs) {
-            defs = doc.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            svgRoot.insertBefore(defs, svgRoot.firstChild);
-          }
-          if (!defs.querySelector('#text-halo')) {
-            const filter = doc.createElementNS('http://www.w3.org/2000/svg', 'filter');
-            filter.setAttribute('id', 'text-halo');
-            filter.setAttribute('x', '-15%');
-            filter.setAttribute('y', '-15%');
-            filter.setAttribute('width', '130%');
-            filter.setAttribute('height', '130%');
-            filter.innerHTML = `
-              <feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="2" />
-              <feFlood flood-color="#ffffff" flood-opacity="1" result="flooded" />
-              <feComposite in="flooded" in2="dilated" operator="in" result="outline" />
-              <feMerge>
-                <feMergeNode in="outline" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            `;
-            defs.appendChild(filter);
-          }
-          ts.setAttribute('filter', 'url(#text-halo)');
-        } else {
-          ts.removeAttribute('filter');
-        }
-      });
+      const { doc, svgRoot } = buildFinalSvg();
 
       // 2. Inject Watermark proportionally
       let wmX = 300;
@@ -176,7 +242,7 @@ export default function QAReport({
       if (!job?.data) throw new Error('EPS conversion job failed to start.');
 
       // Step A: Upload SVG
-      setLoadingText('Uploading graphics...');
+      setLoadingSubtext('Uploading graphics...');
       const uploadTask = job.data.tasks.find(t => t.name === 'import-svg');
       const uploadUrl = uploadTask.result.form.url;
       const uploadParams = uploadTask.result.form.parameters;
@@ -188,7 +254,7 @@ export default function QAReport({
       await fetch(uploadUrl, { method: 'POST', body: formData });
 
       // Step B: Poll for EPS output URL
-      setLoadingText('Processing EPS...');
+      setLoadingSubtext('Processing EPS...');
       const jobId = job.data.id;
       let epsUrl = null;
 
@@ -208,7 +274,7 @@ export default function QAReport({
       if (!epsUrl) throw new Error('EPS conversion timed out');
 
       // Step C: Trigger browser download
-      setLoadingText('Downloading...');
+      setLoadingSubtext('Downloading...');
       const epsRes = await fetch(epsUrl);
       const epsBlob = await epsRes.blob();
       
@@ -238,25 +304,29 @@ export default function QAReport({
       {/* QA Grid stats */}
       <div className="diag-stats" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: '0.75rem',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: '0.6rem',
         marginBottom: '1.25rem'
       }}>
-        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-          <div className="num" id="qaTotal" style={{ fontSize: '1.4rem', fontWeight: 700, color: '#a78bfa' }}>{total}</div>
-          <div className="lbl" style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.2rem' }}>total segments</div>
+        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.65rem', textAlign: 'center' }}>
+          <div className="num" id="qaTotal" style={{ fontSize: '1.3rem', fontWeight: 700, color: '#a78bfa' }}>{total}</div>
+          <div className="lbl" style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.2rem' }}>total</div>
         </div>
-        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-          <div className="num" id="qaReplaced" style={{ fontSize: '1.4rem', fontWeight: 700, color: '#34d399' }}>{replaced}</div>
-          <div className="lbl" style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.2rem' }}>translated</div>
+        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.65rem', textAlign: 'center' }}>
+          <div className="num" id="qaReplaced" style={{ fontSize: '1.3rem', fontWeight: 700, color: '#34d399' }}>{genuineTranslated}</div>
+          <div className="lbl" style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.2rem' }}>translated</div>
         </div>
-        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-          <div className="num" id="qaSkipped" style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fbbf24' }}>{skipped}</div>
-          <div className="lbl" style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.2rem' }}>skipped</div>
+        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.65rem', textAlign: 'center' }}>
+          <div className="num" id="qaTechCode" style={{ fontSize: '1.3rem', fontWeight: 700, color: '#38bdf8' }}>{techcode}</div>
+          <div className="lbl" style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.2rem' }}>tech codes</div>
         </div>
-        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
-          <div className="num" id="qaShrunk" style={{ fontSize: '1.4rem', fontWeight: 700, color: '#38bdf8' }}>{shrunk}</div>
-          <div className="lbl" style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.2rem' }}>font scaled</div>
+        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.65rem', textAlign: 'center' }}>
+          <div className="num" id="qaUnchanged" style={{ fontSize: '1.3rem', fontWeight: 700, color: unchanged > 0 ? '#fbbf24' : '#6b7280' }}>{unchanged}</div>
+          <div className="lbl" style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.2rem' }}>unchanged</div>
+        </div>
+        <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.65rem', textAlign: 'center' }}>
+          <div className="num" id="qaMissing" style={{ fontSize: '1.3rem', fontWeight: 700, color: missing > 0 ? '#ef4444' : '#6b7280' }}>{missing}</div>
+          <div className="lbl" style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.2rem' }}>missing</div>
         </div>
       </div>
 
@@ -268,11 +338,15 @@ export default function QAReport({
         <div className="qa-item" style={{ fontSize: '0.8rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <span className="qa-ok">✓</span> Icons &amp; graphic elements locked
         </div>
-        <div className="qa-item" style={{ fontSize: '0.8rem', color: skipped > 0 ? '#fbbf24' : '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span className="qa-ok">{skipped > 0 ? '⚠' : '✓'}</span> {skipped > 0 ? `${skipped} segments left untranslated` : 'All segments translated'}
+        <div className="qa-item" style={{ fontSize: '0.8rem', color: missing > 0 ? '#ef4444' : unchanged > 0 ? '#fbbf24' : '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span className="qa-ok">{missing > 0 ? '✗' : unchanged > 0 ? '⚠' : '✓'}</span>
+          {missing > 0 ? `${missing} segments have no translation` : unchanged > 0 ? `${unchanged} unchanged segments need review (check Step 3)` : 'All segments translated'}
         </div>
-        <div className="qa-item" style={{ fontSize: '0.8rem', color: shrunk > 0 ? '#38bdf8' : '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span className="qa-ok">{shrunk > 0 ? '⚬' : '✓'}</span> {shrunk > 0 ? `${shrunk} label font-sizes customized` : 'All font ratios matching'}
+        <div className="qa-item" style={{ fontSize: '0.8rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span className="qa-ok">ℹ</span> {techcode} technical codes preserved as-is (fuse ratings, pin IDs, etc.)
+        </div>
+        <div className="qa-item" style={{ fontSize: '0.8rem', color: shrunk > 0 ? '#a78bfa' : '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span className="qa-ok">{shrunk > 0 ? '⊬' : '✓'}</span> {shrunk > 0 ? `${shrunk} label font-sizes adjusted` : 'All font sizes preserved'}
         </div>
         <div className="qa-item" style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <span className="qa-manual">⊙</span> Visual audit complete
@@ -287,6 +361,23 @@ export default function QAReport({
           style={{ flex: 1, minWidth: '120px', margin: 0, padding: '0.65rem 1.25rem', borderColor: '#2d3748', cursor: 'pointer' }}
         >
           🔄 Start Over
+        </button>
+        <button
+          className="btn btn-ghost"
+          onClick={handleDownloadSvg}
+          disabled={exportingSvg || exporting}
+          style={{
+            flex: 1,
+            minWidth: '150px',
+            margin: 0,
+            padding: '0.65rem 1.25rem',
+            cursor: exportingSvg || exporting ? 'not-allowed' : 'pointer',
+            borderColor: '#0284c7',
+            color: '#0284c7',
+            background: '#f0f9ff'
+          }}
+        >
+          {exportingSvg ? '⏳ Saving...' : '⬇️ Download SVG'}
         </button>
         <button
           className="btn btn-primary"
