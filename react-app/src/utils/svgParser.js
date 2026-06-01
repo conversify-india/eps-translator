@@ -7,9 +7,22 @@ export function parseSVGString(text) {
   const svgDoc = parser.parseFromString(text, 'image/svg+xml');
   const NS = 'http://www.w3.org/2000/svg';
 
-  // 1. Split <text> elements containing multiple <tspan> nodes
+  // 1. Wrap all direct text node children of <text> elements into <tspan> elements
   const texts = Array.from(svgDoc.getElementsByTagNameNS(NS, 'text'));
   texts.forEach(parentText => {
+    const childNodes = Array.from(parentText.childNodes);
+    childNodes.forEach(child => {
+      if (child.nodeType === 3 && child.textContent.trim() !== '') {
+        const tspan = svgDoc.createElementNS(NS, 'tspan');
+        tspan.textContent = child.textContent;
+        parentText.replaceChild(tspan, child);
+      }
+    });
+  });
+
+  // 2. Split <text> elements containing multiple <tspan> nodes
+  const textsToSplit = Array.from(svgDoc.getElementsByTagNameNS(NS, 'text'));
+  textsToSplit.forEach(parentText => {
     const children = Array.from(parentText.childNodes);
     const tspansInText = children.filter(c => c.nodeType === 1 && c.tagName.toLowerCase() === 'tspan');
 
@@ -35,12 +48,20 @@ export function parseSVGString(text) {
     }
   });
 
-  const tspans = Array.from(svgDoc.getElementsByTagNameNS(NS, 'tspan'));
+  // 3. Tag only leaf <tspan> elements and extract base styles
+  const allTspans = Array.from(svgDoc.getElementsByTagNameNS(NS, 'tspan'));
   const pathsCount = svgDoc.getElementsByTagNameNS(NS, 'path').length;
 
-  // 2. Tag elements and extract base styles
   const parsedLabels = [];
-  tspans.forEach((ts, index) => {
+  let labelIndex = 1;
+
+  allTspans.forEach((ts) => {
+    // A tspan is a leaf only if it has no child element nodes (nested tspans)
+    const hasChildElements = Array.from(ts.childNodes).some(c => c.nodeType === 1);
+    if (hasChildElements) {
+      return; // Skip parent/container tspans
+    }
+
     const txt = (ts.textContent || '').trim();
     if (!txt) return;
 
@@ -57,7 +78,7 @@ export function parseSVGString(text) {
     }
     if (!baseSize) baseSize = 12; // Fallback default
 
-    const lblId = String(index + 1);
+    const lblId = String(labelIndex++);
     parsedLabels.push({
       id: lblId,
       source: txt,
