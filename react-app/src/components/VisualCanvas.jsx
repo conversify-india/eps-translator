@@ -172,7 +172,11 @@ export default function VisualCanvas({
     pt2.x = clientRect.right;
     pt2.y = clientRect.bottom;
 
-    const matrix = svgEl.getScreenCTM().inverse();
+    const ctm = svgEl.getScreenCTM();
+    if (!ctm) {
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+    const matrix = ctm.inverse();
     const svgPt1 = pt1.matrixTransform(matrix);
     const svgPt2 = pt2.matrixTransform(matrix);
 
@@ -332,17 +336,36 @@ export default function VisualCanvas({
     const svgEl = contentRef.current.querySelector('svg');
     if (!svgEl) return;
 
-    const svgWidth = svgEl.viewBox.baseVal.width || svgEl.width.baseVal.value || svgEl.clientWidth || 800;
-    const svgHeight = svgEl.viewBox.baseVal.height || svgEl.height.baseVal.value || svgEl.clientHeight || 600;
+    let svgWidth = 800;
+    let svgHeight = 600;
+
+    if (svgEl.viewBox && svgEl.viewBox.baseVal) {
+      svgWidth = svgEl.viewBox.baseVal.width || svgWidth;
+      svgHeight = svgEl.viewBox.baseVal.height || svgHeight;
+    } else {
+      const wAttr = svgEl.getAttribute('width');
+      const hAttr = svgEl.getAttribute('height');
+      if (wAttr && hAttr) {
+        svgWidth = parseFloat(wAttr) || svgWidth;
+        svgHeight = parseFloat(hAttr) || svgHeight;
+      } else {
+        svgWidth = svgEl.clientWidth || svgWidth;
+        svgHeight = svgEl.clientHeight || svgHeight;
+      }
+    }
 
     const rect = viewportRef.current.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+
     const scaleX = rect.width / svgWidth;
     const scaleY = rect.height / svgHeight;
     const newScale = Math.min(scaleX, scaleY, 1.0) * 0.95;
 
-    setZoomScale(newScale);
-    setPanX((rect.width - svgWidth * newScale) / 2);
-    setPanY((rect.height - svgHeight * newScale) / 2);
+    if (!isNaN(newScale) && isFinite(newScale)) {
+      setZoomScale(newScale);
+      setPanX((rect.width - svgWidth * newScale) / 2);
+      setPanY((rect.height - svgHeight * newScale) / 2);
+    }
   };
 
   const resetZoom = () => {
@@ -436,13 +459,13 @@ export default function VisualCanvas({
               position: 'relative',
               overflow: 'hidden',
               cursor: isPanning ? 'grabbing' : 'grab',
-              outline: 'none',
-              background: '#0f1117'
+              outline: 'none'
             }}
           >
             <div 
               ref={contentRef}
               id="canvasContent"
+              className="canvas-content"
               dangerouslySetInnerHTML={{ __html: svgText }}
               style={{
                 position: 'absolute',

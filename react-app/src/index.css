@@ -524,3 +524,47 @@ header p {
     transform: rotate(360deg);
   }
 }
+
+/* --- CANVAS VIEWPORT & CONTENT RENDERING --- */
+.canvas-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+  outline: none;
+  background-color: #ffffff !important;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px) !important;
+  background-size: 16px 16px !important;
+  transition: background-color 0.2s, background-image 0.2s;
+}
+
+.canvas-viewport:active {
+  cursor: grabbing;
+}
+
+.canvas-viewport.dark-theme {
+  background-color: #0b0c10 !important;
+  background-image: radial-gradient(#1f2937 1px, transparent 1px) !important;
+}
+
+.canvas-content {
+  transform-origin: 0 0;
+  position: absolute;
+  will-change: transform;
+}
+
+.canvas-content svg {
+  display: block;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+#canvasContent [data-label-id] {
+  cursor: pointer;
+  transition: fill 0.1s;
+}
+
+#canvasContent [data-label-id]:hover {
+  fill: #38bdf8 !important;
+}
+
