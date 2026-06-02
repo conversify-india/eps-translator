@@ -14,7 +14,7 @@ This document provides a comprehensive, step-by-step overview of the architectur
 
 ### Step 1: Secure Login & Verification
 *   **Google Sign-In**: Users authenticate securely using Google OAuth, which ensures that only authorized corporate accounts can access the tool.
-*   **CAPTCHA Protection**: A security verification check prevents automated bot abuse.
+*   **CAPTCHA Protection**: A simulated "I'm not a robot" client-side verification check that acts as a guard against accidental login clicks (configured as a zero-dependency mock without active Google Server validation).
 *   **Session Save**: The active login state is saved in the browser's local storage. If the page is refreshed, the user remains signed in and skips the login portal.
 *   **Silent Activity Audit**: Upon login, user data (name, email, and timestamp) is silently recorded in a secure **Google Sheet** (stored on your Google Drive) for activity audit logs.
 

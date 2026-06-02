@@ -30,8 +30,8 @@ Because web browsers cannot parse or compile raw binary vector drawings (`.eps`)
 To prevent a single user from running up costs or exhausting the shared daily API credits, the tool enforces several defensive rules:
 
 ### A. Per-User Daily Limit
-*   **Restriction**: Enforces a strict limit of **1 file conversion per user per day**.
-*   **Behavior**: Once a user successfully translates and downloads one EPS file, their browser marks the session. Any subsequent EPS uploads today will show a *"Daily Limit Reached"* notice and be blocked.
+*   **Restriction**: Enforces a strict limit of **5 file conversions per user per day**.
+*   **Behavior**: Once a user successfully translates and downloads 5 EPS files, their browser marks the session. Any subsequent EPS uploads today will show a *"Daily Limit Reached"* notice and be blocked.
 *   **Developer Exemption**: This limit is automatically bypassed when running on local environments (`localhost` or `127.0.0.1`) so developers can test files continuously.
 
 ### B. File Size Boundary
@@ -42,10 +42,10 @@ To prevent a single user from running up costs or exhausting the shared daily AP
 *   **Quota**: Logs up to **20,000 user login records per day**.
 *   **Cost**: **100% Free** (uses Google Apps Script web apps hooked to a Google Sheet in your Google Drive).
 
-### D. Google Client ID & reCAPTCHA Domains
-*   **Restriction**: Google login and CAPTCHA credentials are locked to specific authorized web domains.
+### D. Google Client ID Domains
+*   **Restriction**: Google login credentials are locked to specific authorized web domains in the Google Cloud Console.
 *   **Authorized Domains**: `localhost` (development testing) and `lingochaps.com` (production website).
-*   *Note: If the application index file is moved to a different domain name in the future, these features will block users until the new domain is added in the Google Developer Console.*
+*   *Note: If the application index file is moved to a different domain name in the future, the Google sign-in feature will block users with an origin_mismatch error until the new domain is added in the Google Cloud Console.*
 
 ---
 

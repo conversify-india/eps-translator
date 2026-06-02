@@ -34,7 +34,7 @@ To launch the tool, the following files from the compiled `react-app/dist/` dire
 The application features smart environment auto-detection built directly into the source code. Your team member **does not need to modify any code or configure environment variables** to deploy to different directories.
 
 ### A. Dynamic API Resolution (in [api.js](file:///Users/snigdha/Desktop/eps-translator/react-app/src/services/api.js))
-*   **Localhost (`localhost`/`127.0.0.1`):** The app automatically directs its backend requests to the production backend: `https://lingochaps.com/eps-tool/api.php` to enable full testing on your laptop without hosting a local PHP server.
+*   **Localhost (`localhost`/`127.0.0.1`):** The app automatically directs its backend requests to the local development server at `http://localhost:8000/api.php`. You can start this local server in the root workspace folder by running `php -S localhost:8000`.
 *   **Live Web (Staging or Production):** The app automatically resolves calls using the relative path `api.php`. If you upload files to `/eps-tool-staging/`, it calls the staging backend; if uploaded to `/eps-tool/`, it calls the production backend.
 
 ### B. Daily Free Limits Bypass (in [UploadZone.jsx](file:///Users/snigdha/Desktop/eps-translator/react-app/src/components/UploadZone.jsx))

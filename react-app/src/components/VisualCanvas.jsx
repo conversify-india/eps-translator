@@ -24,13 +24,7 @@ export default function VisualCanvas({
   const [overlapCount, setOverlapCount] = useState(0);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [applyToAllSameSource, setApplyToAllSameSource] = useState(true);
-  const [forceTextVisible, setForceTextVisible] = useState(hasVectorOutlines);
-
-  useEffect(() => {
-    if (hasVectorOutlines) {
-      setForceTextVisible(true);
-    }
-  }, [hasVectorOutlines]);
+  const [forceTextVisible, setForceTextVisible] = useState(true);
 
   // HTML overlay selection highlight bounds state
   const [highlightRect, setHighlightRect] = useState(null);
@@ -76,6 +70,22 @@ export default function VisualCanvas({
 
   // Sync selected label data to sidebar form state
   const selectedLabel = labels.find(l => l.id === selectedLabelId);
+
+  // ── 0. Inject SVG into DOM FIRST — must run before labels effect queries the DOM ──
+  const svgInjectedRef = useRef('');
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container || !svgText) return;
+    // Only re-inject if the SVG source actually changed (e.g. new file uploaded)
+    if (svgInjectedRef.current === svgText) return;
+    svgInjectedRef.current = svgText;
+    container.innerHTML = svgText;
+  }, [svgText]);
+
+  // Run ZoomToFit on initial load
+  useEffect(() => {
+    zoomToFit();
+  }, [svgText]);
 
   // ── 1. Apply Translations & Overrides directly to DOM ──
 
@@ -557,21 +567,7 @@ export default function VisualCanvas({
     setPanY(0);
   };
 
-  // ── Inject SVG once into DOM (avoids dangerouslySetInnerHTML wiping DOM text edits on re-render) ──
-  const svgInjectedRef = useRef('');
-  useEffect(() => {
-    const container = contentRef.current;
-    if (!container || !svgText) return;
-    // Only re-inject if the SVG source actually changed (e.g. new file uploaded)
-    if (svgInjectedRef.current === svgText) return;
-    svgInjectedRef.current = svgText;
-    container.innerHTML = svgText;
-  }, [svgText]);
 
-  // Run ZoomToFit on initial load
-  useEffect(() => {
-    zoomToFit();
-  }, [svgText]);
 
   // Sidebar controls modifier helper
   const updateSelectedLabel = (field, value) => {

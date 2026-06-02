@@ -10,7 +10,7 @@ When you create a Google Cloud account, Google automatically generates a default
 
 ### Is it Free?
 * **Google Sign-In**: **100% Free** forever. There are no fees or limits on how many users can sign in using their Google account.
-* **Google reCAPTCHA v2**: **Free** for up to **10,000 assessments per month**. For a private translator portal, this free limit is more than enough.
+* **Google reCAPTCHA v2**: The current implementation uses a **simulated client-side mock checkbox** to provide a fast and zero-configuration bot check, meaning **no API keys or external Google reCAPTCHA server setup is active in the current code**. If you wish to implement live verification in the future, you can configure Google reCAPTCHA v2 (free for up to 10,000 assessments/month).
 * **Firebase (User Database)**: **Free** (Spark Plan) up to **50,000 monthly active users** and 1 GB of database storage, which is perfect for keeping track of your users.
 
 ### How do we record who is using the site (User Emails)?
@@ -20,11 +20,9 @@ The easiest, free, and most secure way to store user emails is **Firebase Authen
 
 ## 2. Configuration Credentials (Save Here)
 
-Once you complete the steps below, paste your keys here for safekeeping:
-
-* **Google Client ID**: `[PASTE_YOUR_CLIENT_ID_HERE]`
-* **reCAPTCHA Site Key (Client)**: `[PASTE_YOUR_SITE_KEY_HERE]`
-* **reCAPTCHA Secret Key (Server)**: `[PASTE_YOUR_SECRET_KEY_HERE]`
+*   **Google Client ID**: `366085231938-v2dajqpl5u86o5sneoqhggv6u6hlmfpr.apps.googleusercontent.com`
+*   **reCAPTCHA Site Key (Client)**: *Not required (using simulated mock captcha)*
+*   **reCAPTCHA Secret Key (Server)**: *Not required (using simulated mock captcha)*
 
 ---
 
@@ -43,14 +41,15 @@ Once you complete the steps below, paste your keys here for safekeeping:
    * Click **Create**.
    * Copy the **Client ID** from the popup and paste it into the credentials section above.
 
-### Step B: Generate reCAPTCHA v2 Keys
+### Step B: Generate reCAPTCHA v2 Keys (Optional / Future Reference)
+*Note: This step is only necessary if you decide to replace the current simulated mock captcha with live Google verification.*
 1. Go to the [Google reCAPTCHA Console](https://www.google.com/recaptcha/admin).
 2. Register a new site:
    * **Label**: `Aura Translator`
    * **reCAPTCHA type**: Select **reCAPTCHA v2** -> **"I'm not a robot" checkbox**.
    * **Domains**: Add `localhost` (for testing) and your website domain (once you deploy it online).
 3. Click **Submit**.
-4. Copy the **Site Key** and **Secret Key** and paste them into the credentials section above.
+4. Copy the **Site Key** and **Secret Key** and save them for when you integrate a live recaptcha library.
 
 ### Step C: Set up Firebase to Store Emails (Free)
 1. Go to the [Firebase Console](https://console.firebase.google.com/).
@@ -79,9 +78,8 @@ Once you complete the steps below, paste your keys here for safekeeping:
 ## 4. Lifelong Maintenance & Operations
 
 To ensure this setup works forever without issues:
-1. **Domain Changes**: If you deploy your app to a new hosting provider (e.g., Vercel, Netlify, or your own domain like `mytranslator.com`), you **must** update:
+1. **Domain Changes**: If you deploy your app to a new hosting provider or domain (e.g., your own domain like `mytranslator.com`), you **must** update:
    * **Google Cloud Console**: Add the new domain to **Authorized JavaScript origins**.
-   * **reCAPTCHA Console**: Add the new domain to the **Domains** list.
    * **Firebase Console**: Add the new domain to **Authorized domains** under Authentication settings.
-2. **Security Checks**: Never share your reCAPTCHA **Secret Key** or your Firebase **Private Admin keys** publicly.
+2. **Security Checks**: Never share your Firebase Config credentials or your Firebase **Private Admin keys** publicly.
 3. **No Coding Required to Manage Users**: You can view, search, delete, or manage registered user emails simply by logging into the [Firebase Authentication Dashboard](https://console.firebase.google.com/).
