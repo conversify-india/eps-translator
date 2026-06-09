@@ -8,16 +8,22 @@ export default function VisualCanvas({
   selectedLabelId,
   setSelectedLabelId,
   onProceedClick,
-  hasVectorOutlines
+  hasVectorOutlines,
+  hideSidebar = false
 }) {
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
+  const wheelStateRef = useRef({ zoomScale: 1.0, panX: 0, panY: 0 });
 
   const [zoomScale, setZoomScale] = useState(1.0);
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const [startDrag, setStartDrag] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    wheelStateRef.current = { zoomScale, panX, panY };
+  }, [zoomScale, panX, panY]);
 
   const [overlapsEnabled, setOverlapsEnabled] = useState(false);
   const [globalScale, setGlobalScale] = useState(1.0);
@@ -71,16 +77,78 @@ export default function VisualCanvas({
   // Sync selected label data to sidebar form state
   const selectedLabel = labels.find(l => l.id === selectedLabelId);
 
-  // ── 0. Inject SVG into DOM FIRST — must run before labels effect queries the DOM ──
+  // ── 0a. Inject SVG HTML into DOM ──
+  // Only re-injects when the SVG source actually changes (new file upload).
+  // Label-ID stamping is handled separately below so it runs independently.
   const svgInjectedRef = useRef('');
   useEffect(() => {
     const container = contentRef.current;
     if (!container || !svgText) return;
-    // Only re-inject if the SVG source actually changed (e.g. new file uploaded)
     if (svgInjectedRef.current === svgText) return;
     svgInjectedRef.current = svgText;
     container.innerHTML = svgText;
   }, [svgText]);
+
+  // ── 0b. Stamp data-label-id attributes into the live DOM ──
+  // Runs whenever labels OR svgText changes so interactivity is always wired up,
+  // including after navigating away and back to Step 4.
+  // The exported SVG (built in QAReport from originalSvgText) never contains
+  // these attributes — they only power the editor.
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container || labels.length === 0) return;
+
+    const svgEl = container.querySelector('svg');
+    if (!svgEl) return;
+
+    // Build lookup: source text -> label id (since labels has unique source texts, map source to label id directly)
+    const sourceToId = new Map();
+    labels.forEach(label => {
+      const key = (label.source || '').trim();
+      if (!key) return;
+      sourceToId.set(key, label.id);
+    });
+
+    // Clear previously stamped IDs for a clean reassignment
+    svgEl.querySelectorAll('[data-label-id]').forEach(el => {
+      el.removeAttribute('data-label-id');
+    });
+
+    // Walk all leaf text/tspan nodes and stamp matching label IDs
+    const walker = document.createTreeWalker(
+      svgEl,
+      NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode(node) {
+          const tag = node.tagName && node.tagName.toLowerCase();
+          return (tag === 'text' || tag === 'tspan')
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_SKIP;
+        }
+      }
+    );
+
+    let node;
+    while ((node = walker.nextNode())) {
+      // Leaf nodes only — skip parent wrappers containing child elements
+      const hasChildEl = Array.from(node.childNodes).some(c => c.nodeType === 1);
+      if (hasChildEl) continue;
+
+      const content = (node.textContent || '').trim();
+      if (!content) continue;
+
+      const labelId = sourceToId.get(content);
+      if (labelId) {
+        node.setAttribute('data-label-id', labelId);
+
+        // Also stamp the parent <text> node if this is a <tspan>
+        const parentText = node.tagName.toLowerCase() === 'text' ? node : node.closest('text');
+        if (parentText) {
+          parentText.setAttribute('data-label-id', labelId);
+        }
+      }
+    }
+  }, [svgText, labels]);
 
   // Run ZoomToFit on initial load
   useEffect(() => {
@@ -106,194 +174,196 @@ export default function VisualCanvas({
     }
 
     labels.forEach((label) => {
-      const ts = container.querySelector(`[data-label-id="${label.id}"]`);
-      if (!ts) {
-        console.warn(`[VisualCanvas] Element not found for ID: ${label.id}`);
+      const targets = container.querySelectorAll(`[data-label-id="${label.id}"]`);
+      if (targets.length === 0) {
+        console.warn(`[VisualCanvas] Elements not found for ID: ${label.id}`);
         return;
       }
 
-      // Update text
-      const newText = label.translation || label.source;
-      if (ts.textContent !== newText) {
-        console.log(`[VisualCanvas] Updating text node ID ${label.id} from "${ts.textContent}" to "${newText}"`);
-        ts.textContent = newText;
+      targets.forEach(ts => {
+        // Update text
+        const newText = label.translation || label.source;
+        if (ts.textContent !== newText) {
+          console.log(`[VisualCanvas] Updating text node ID ${label.id} from "${ts.textContent}" to "${newText}"`);
+          ts.textContent = newText;
 
-        // Force browser layout reflow/redraw for SVG text element (fixes Chrome redraw bug)
-        try {
-          const parentText = ts.closest('text');
-          if (parentText) {
-            const currentY = parentText.getAttribute('y');
-            if (currentY) {
-              parentText.setAttribute('y', String(parseFloat(currentY) + 0.0001));
-              setTimeout(() => {
-                if (parentText.isConnected) {
-                  parentText.setAttribute('y', currentY);
-                }
-              }, 0);
+          // Force browser layout reflow/redraw for SVG text element (fixes Chrome redraw bug)
+          try {
+            const parentText = ts.closest('text');
+            if (parentText) {
+              const currentY = parentText.getAttribute('y');
+              if (currentY) {
+                parentText.setAttribute('y', String(parseFloat(currentY) + 0.0001));
+                setTimeout(() => {
+                  if (parentText.isConnected) {
+                    parentText.setAttribute('y', currentY);
+                  }
+                }, 0);
+              }
+            }
+          } catch (e) {
+            // ignore reflow errors
+          }
+        }
+
+        // Determine base font size (fallback if baseFontSize is missing/NaN)
+        let baseSize = label.baseFontSize;
+        if (baseSize === undefined || isNaN(baseSize)) {
+          const fsAttr = ts.getAttribute('font-size') || ts.style.fontSize;
+          if (fsAttr) {
+            baseSize = parseFloat(fsAttr);
+          } else {
+            const parentText = ts.closest('text');
+            if (parentText) {
+              const parentFs = parentText.getAttribute('font-size') || parentText.style.fontSize;
+              if (parentFs) baseSize = parseFloat(parentFs);
             }
           }
-        } catch (e) {
-          // ignore reflow errors
         }
-      }
-
-      // Update font size (multiply by global scale)
-      // Enforce minimum 6px so tiny CAD labels (e.g. 1.5px) are readable in the editor
-      const fs = label.fontSizeOverride !== undefined 
-        ? label.fontSizeOverride 
-        : label.baseFontSize;
-      const renderedFs = Math.max(fs * globalScale, 6);
-      ts.style.fontSize = renderedFs + 'px';
-
-      // ── Smart font-family: ONLY switch to Noto for non-Latin scripts ──
-      // Keeping original font for Latin translations preserves exact character metrics
-      // so text fits the same space as the original without overflow.
-      const translatedText = label.translation || label.source;
-      if (needsNotoFont(translatedText)) {
-        ts.style.fontFamily = "'Noto Sans', 'Noto Sans Devanagari', 'Noto Naskh Arabic', 'Noto Sans CJK SC', Arial, sans-serif";
-      } else {
-        // Keep original font-family — don't override it, let the SVG attribute control it
-        ts.style.fontFamily = '';
-      }
-
-      // Update dx/dy offsets
-      if (label.dxOverride !== undefined) {
-        ts.setAttribute('dx', label.dxOverride);
-      } else {
-        ts.removeAttribute('dx');
-      }
-
-      if (label.dyOverride !== undefined) {
-        ts.setAttribute('dy', label.dyOverride);
-      } else {
-        ts.removeAttribute('dy');
-      }
-
-      // Update letter spacing
-      if (label.letterSpacingOverride !== undefined) {
-        ts.style.letterSpacing = label.letterSpacingOverride + 'px';
-      } else {
-        ts.style.letterSpacing = '';
-      }
-
-      // ── Halo filter: only apply to labels that explicitly need it ──
-      // Never blanket-apply to all labels when forceTextVisible is on — applying SVG
-      // filters to hundreds of elements simultaneously crashes the renderer.
-      const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
-      const needsHalo = label.haloOverride || (forceTextVisible && label.isOriginalInvisible);
-      if (needsHalo) {
-        ts.setAttribute('filter', 'url(#text-halo)');
-        if (parentTextEl && parentTextEl !== ts) {
-          parentTextEl.setAttribute('filter', 'url(#text-halo)');
+        if (!baseSize || isNaN(baseSize)) {
+          baseSize = 12; // final fallback
         }
-      } else {
-        ts.removeAttribute('filter');
-        if (parentTextEl && parentTextEl !== ts) {
-          parentTextEl.removeAttribute('filter');
-        }
-      }
 
-      // Update visibility & color overrides for vectorized elements
-      if (forceTextVisible) {
-        ts.style.fill = label.textColorOverride || 'currentColor';
-        ts.style.opacity = '1';
-        ts.style.fillOpacity = '1';
-        ts.style.visibility = 'visible';
-        ts.style.display = 'inline';
+        // Update font size (multiply by global scale)
+        const fs = label.fontSizeOverride !== undefined 
+          ? label.fontSizeOverride 
+          : baseSize;
+        const renderedFs = fs * globalScale;
+        ts.style.fontSize = renderedFs + 'px';
 
-        // ── CRITICAL FIX: Traverse ALL ancestor elements up to SVG root ──
-        // CAD tools often nest text inside <g> groups with opacity=0 / display=none.
-        // We must force every ancestor group visible, not just the immediate <text> parent.
-        const svgRoot = ts.closest('svg');
-        let ancestor = ts.parentElement;
-        while (ancestor && ancestor !== svgRoot && ancestor !== container) {
-          const tag = ancestor.tagName.toLowerCase();
-          // Force the ancestor visible
-          ancestor.style.opacity = '1';
-          ancestor.style.visibility = 'visible';
-          ancestor.style.display = tag === 'g' ? 'inline' : ancestor.style.display || '';
-          // Fix fill:none on <text> elements so text has a colour
-          if (tag === 'text') {
-            if (ancestor.getAttribute('fill') === 'none' && !label.textColorOverride) {
-              ancestor.style.fill = 'currentColor';
-            } else {
-              ancestor.style.fill = label.textColorOverride || ancestor.style.fill || '';
-            }
-          }
-          ancestor = ancestor.parentElement;
+        // ── Smart font-family: ONLY switch to Noto for non-Latin scripts ──
+        const translatedText = label.translation || label.source;
+        if (needsNotoFont(translatedText)) {
+          ts.style.fontFamily = "'Noto Sans', 'Noto Sans Devanagari', 'Noto Naskh Arabic', 'Noto Sans CJK SC', Arial, sans-serif";
+        } else {
+          ts.style.fontFamily = '';
         }
-      } else {
-        if (label.isOriginalInvisible) {
-          ts.style.fill = 'none';
-          ts.style.opacity = '0';
-          ts.style.fillOpacity = '0';
-          const parentText = ts.closest('text');
-          if (parentText) {
-            parentText.style.fill = 'none';
-            parentText.style.opacity = '0';
-            parentText.style.fillOpacity = '0';
+
+        // Update dx/dy offsets
+        if (label.dxOverride !== undefined) {
+          ts.setAttribute('dx', label.dxOverride);
+        } else {
+          ts.removeAttribute('dx');
+        }
+
+        if (label.dyOverride !== undefined) {
+          ts.setAttribute('dy', label.dyOverride);
+        } else {
+          ts.removeAttribute('dy');
+        }
+
+        // Update letter spacing
+        if (label.letterSpacingOverride !== undefined) {
+          ts.style.letterSpacing = label.letterSpacingOverride + 'px';
+        } else {
+          ts.style.letterSpacing = '';
+        }
+
+        // ── Halo filter: only apply to labels that explicitly need it ──
+        const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+        const needsHalo = label.haloOverride || (forceTextVisible && label.isOriginalInvisible);
+        if (needsHalo) {
+          ts.setAttribute('filter', 'url(#text-halo)');
+          if (parentTextEl && parentTextEl !== ts) {
+            parentTextEl.setAttribute('filter', 'url(#text-halo)');
           }
         } else {
-          ts.style.fill = label.textColorOverride || '';
-          ts.style.opacity = '';
-          ts.style.fillOpacity = '';
-          const parentText = ts.closest('text');
-          if (parentText) {
-            parentText.style.fill = label.textColorOverride || '';
-            parentText.style.opacity = '';
-            parentText.style.fillOpacity = '';
+          ts.removeAttribute('filter');
+          if (parentTextEl && parentTextEl !== ts) {
+            parentTextEl.removeAttribute('filter');
           }
         }
-      }
-    });
 
-    // ── Inject white mask rects for EPS mode (covers original vector path outlines) ──
-    // This is the most reliable way to hide the original path-drawn letters and
-    // show only the translated text, making the output look identical in layout.
-    if (svgEl && forceTextVisible) {
-      const NS = 'http://www.w3.org/2000/svg';
-      let maskGroup = svgEl.getElementById('translation-white-masks');
-      if (!maskGroup) {
-        maskGroup = svgEl.ownerDocument.createElementNS(NS, 'g');
-        maskGroup.setAttribute('id', 'translation-white-masks');
-        maskGroup.setAttribute('style', 'pointer-events: none;');
-      } else {
-        maskGroup.innerHTML = ''; // Clear old masks
-      }
+        // Update visibility & color overrides for vectorized elements
+        if (forceTextVisible) {
+          ts.style.fill = label.textColorOverride || 'currentColor';
+          ts.style.opacity = '1';
+          ts.style.fillOpacity = '1';
+          ts.style.visibility = 'visible';
+          ts.style.display = 'inline';
 
-      let masksAdded = 0;
-      labels.forEach(label => {
-        const ts = container.querySelector(`[data-label-id="${label.id}"]`);
-        if (!ts) return;
-        const textEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
-        if (!textEl) return;
-        try {
-          const bbox = textEl.getBBox();
-          if (bbox.width < 1 && bbox.height < 1) return; // nothing rendered yet
-          const pad = Math.max(bbox.height * 0.5, 2); // padding proportional to text height
-          const rect = svgEl.ownerDocument.createElementNS(NS, 'rect');
-          rect.setAttribute('x',      (bbox.x - pad).toFixed(3));
-          rect.setAttribute('y',      (bbox.y - pad).toFixed(3));
-          rect.setAttribute('width',  (bbox.width  + pad * 2).toFixed(3));
-          rect.setAttribute('height', (bbox.height + pad * 2).toFixed(3));
-          rect.setAttribute('fill', 'white');
-          maskGroup.appendChild(rect);
-          masksAdded++;
-        } catch (_) {
-          // getBBox can throw for hidden/unrendered elements — safe to ignore
+          // ── CRITICAL FIX: Traverse ALL ancestor elements up to SVG root ──
+          const svgRoot = ts.closest('svg');
+          let ancestor = ts.parentElement;
+          while (ancestor && ancestor !== svgRoot && ancestor !== container) {
+            const tag = ancestor.tagName.toLowerCase();
+            ancestor.style.opacity = '1';
+            ancestor.style.visibility = 'visible';
+            ancestor.style.display = tag === 'g' ? 'inline' : ancestor.style.display || '';
+            if (tag === 'text') {
+              if (ancestor.getAttribute('fill') === 'none' && !label.textColorOverride) {
+                ancestor.style.fill = 'currentColor';
+              } else {
+                ancestor.style.fill = label.textColorOverride || ancestor.style.fill || '';
+              }
+            }
+            ancestor = ancestor.parentElement;
+          }
+        } else {
+          if (label.isOriginalInvisible) {
+            ts.style.fill = 'none';
+            ts.style.opacity = '0';
+            ts.style.fillOpacity = '0';
+            const parentText = ts.closest('text');
+            if (parentText) {
+              parentText.style.fill = 'none';
+              parentText.style.opacity = '0';
+              parentText.style.fillOpacity = '0';
+            }
+          } else {
+            ts.style.fill = label.textColorOverride || '';
+            ts.style.opacity = '';
+            ts.style.fillOpacity = '';
+            const parentText = ts.closest('text');
+            if (parentText) {
+              parentText.style.fill = label.textColorOverride || '';
+              parentText.style.opacity = '';
+              parentText.style.fillOpacity = '';
+            }
+          }
         }
       });
+    });
 
-      // Safely append the mask group to SVG (at the end = on top of paths, white rects
-      // are covered by the text elements which are also at the SVG end in EPS files).
-      // Using insertBefore on a non-direct-child throws a DOMException, so use appendChild.
-      if (masksAdded > 0) {
-        svgEl.appendChild(maskGroup);
-      }
-    } else if (svgEl) {
-      // Remove masks when forceTextVisible is off
-      const oldMaskGroup = svgEl.getElementById('translation-white-masks');
-      if (oldMaskGroup) oldMaskGroup.remove();
+    // ── Inject white mask rects for EPS mode ──
+    const NS = 'http://www.w3.org/2000/svg';
+    
+    // First, always remove old sibling masks
+    labels.forEach(label => {
+      const targets = container.querySelectorAll(`[data-label-id="${label.id}"]`);
+      targets.forEach(ts => {
+        const textEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+        if (!textEl || !textEl.parentNode) return;
+        const oldMask = textEl.parentNode.querySelector(`rect[data-mask-for="${label.id}"]`);
+        if (oldMask) oldMask.remove();
+      });
+    });
+
+    if (svgEl && forceTextVisible) {
+      labels.forEach(label => {
+        const targets = container.querySelectorAll(`[data-label-id="${label.id}"]`);
+        targets.forEach(ts => {
+          const textEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+          if (!textEl || !textEl.parentNode) return;
+          try {
+            const bbox = textEl.getBBox();
+            if (bbox.width < 1 && bbox.height < 1) return;
+            const pad = Math.max(bbox.height * 0.25, 2);
+            const rect = svgEl.ownerDocument.createElementNS(NS, 'rect');
+            rect.setAttribute('data-mask-for', label.id);
+            rect.setAttribute('x',      (bbox.x - pad).toFixed(3));
+            rect.setAttribute('y',      (bbox.y - pad).toFixed(3));
+            rect.setAttribute('width',  (bbox.width  + pad * 2).toFixed(3));
+            rect.setAttribute('height', (bbox.height + pad * 2).toFixed(3));
+            rect.setAttribute('fill', 'white');
+            rect.setAttribute('style', 'pointer-events: none;');
+            
+            textEl.parentNode.insertBefore(rect, textEl);
+          } catch (_) {
+            // ignore
+          }
+        });
+      });
     }
 
     // Redraw bounding boxes
@@ -485,19 +555,34 @@ export default function VisualCanvas({
 
   const handleWheel = (e) => {
     e.preventDefault();
+    const { zoomScale: currentScale, panX: currentPanX, panY: currentPanY } = wheelStateRef.current;
     const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
     const rect = viewportRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const contentX = (mouseX - panX) / zoomScale;
-    const contentY = (mouseY - panY) / zoomScale;
+    const contentX = (mouseX - currentPanX) / currentScale;
+    const contentY = (mouseY - currentPanY) / currentScale;
 
-    const newScale = Math.min(Math.max(zoomScale * zoomFactor, 0.15), 8);
+    const newScale = Math.min(Math.max(currentScale * zoomFactor, 0.15), 8);
     setZoomScale(newScale);
     setPanX(mouseX - contentX * newScale);
     setPanY(mouseY - contentY * newScale);
   };
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const onWheelEvent = (e) => {
+      handleWheel(e);
+    };
+
+    viewport.addEventListener('wheel', onWheelEvent, { passive: false });
+    return () => {
+      viewport.removeEventListener('wheel', onWheelEvent);
+    };
+  }, []);
 
   const zoomIn = () => {
     const rect = viewportRef.current.getBoundingClientRect();
@@ -633,14 +718,31 @@ export default function VisualCanvas({
           const lengthRatio = srcLen / trnLen;
           if (lengthRatio >= 1) return; // translated is same length or shorter — fits fine
 
+          let baseFs = label.baseFontSize;
+          if (baseFs === undefined || isNaN(baseFs)) {
+            const fsAttr = ts.getAttribute('font-size') || ts.style.fontSize;
+            if (fsAttr) {
+              baseFs = parseFloat(fsAttr);
+            } else {
+              const parentText = ts.closest('text');
+              if (parentText) {
+                const parentFs = parentText.getAttribute('font-size') || parentText.style.fontSize;
+                if (parentFs) baseFs = parseFloat(parentFs);
+              }
+            }
+          }
+          if (!baseFs || isNaN(baseFs)) {
+            baseFs = 12; // fallback
+          }
+
           const currentFs = label.fontSizeOverride !== undefined
             ? label.fontSizeOverride
-            : label.baseFontSize;
+            : baseFs;
 
           // Scale font down proportionally, floor at 40% of original baseFontSize
           const targetFs = Math.max(
             currentFs * lengthRatio,
-            label.baseFontSize * 0.4
+            baseFs * 0.4
           );
 
           if (Math.abs(targetFs - currentFs) > 0.2) {
@@ -670,6 +772,42 @@ export default function VisualCanvas({
     }));
     onBulkLabelUpdate(resets);
   };
+
+  const handleProceed = () => {
+    const container = contentRef.current;
+    if (container && onBulkLabelUpdate) {
+      const updates = [];
+      labels.forEach(label => {
+        const ts = container.querySelector(`[data-label-id="${label.id}"]`);
+        if (ts) {
+          const textEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
+          if (textEl) {
+            try {
+              const bbox = textEl.getBBox();
+              if (bbox.width > 0 && bbox.height > 0) {
+                updates.push({
+                  id: label.id,
+                  bbox: {
+                    x: parseFloat(bbox.x.toFixed(3)),
+                    y: parseFloat(bbox.y.toFixed(3)),
+                    width: parseFloat(bbox.width.toFixed(3)),
+                    height: parseFloat(bbox.height.toFixed(3))
+                  }
+                });
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+      });
+      if (updates.length > 0) {
+        onBulkLabelUpdate(updates);
+      }
+    }
+    onProceedClick();
+  };
+
 
   return (
     <div className="card" id="section-visual-canvas" style={{ padding: '0', background: 'transparent', border: 'none', boxShadow: 'none' }}>
@@ -773,7 +911,6 @@ export default function VisualCanvas({
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onWheel={handleWheel}
             style={{
               flex: 1,
               width: '100%',
@@ -818,7 +955,8 @@ export default function VisualCanvas({
         </div>
 
         {/* Right Side: Sidebar Controls */}
-        <div className="controls-panel">
+        {!hideSidebar && (
+          <div className="controls-panel">
           {selectedLabel ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="selected-label-title">
@@ -889,7 +1027,7 @@ export default function VisualCanvas({
               <div className="control-group">
                 <div className="control-slider-val">
                   <label>Font Size</label>
-                  <span>{Number(selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : selectedLabel.baseFontSize).toFixed(1)}px</span>
+                  <span>{Number(selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : (selectedLabel.baseFontSize || 12)).toFixed(1)}px</span>
                 </div>
                 <input 
                   type="range" 
@@ -897,7 +1035,7 @@ export default function VisualCanvas({
                   min="0.5" 
                   max="72" 
                   step="0.1"
-                  value={selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : selectedLabel.baseFontSize} 
+                  value={selectedLabel.fontSizeOverride !== undefined ? selectedLabel.fontSizeOverride : (selectedLabel.baseFontSize || 12)} 
                   onChange={(e) => updateSelectedLabel('fontSizeOverride', parseFloat(e.target.value))}
                 />
               </div>
@@ -1023,13 +1161,14 @@ export default function VisualCanvas({
           <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid #1f2937' }}>
             <button 
               className="btn btn-primary" 
-              onClick={onProceedClick} 
+              onClick={handleProceed} 
               style={{ width: '100%', margin: '0', padding: '0.65rem', cursor: 'pointer' }}
             >
               Proceed to QA &amp; Export ▶
             </button>
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Collapsible User Guide Card */}

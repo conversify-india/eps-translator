@@ -72,9 +72,9 @@ const baseUrl = (window.location.hostname === 'localhost' || window.location.hos
 * **Localhost Mode:** All backend requests (CloudConvert conversion, Gemini AI Translation, Google Sheets logging) are automatically proxied to your local PHP server at `http://localhost:8000/api.php` so you can test changes to your backend securely.
 * **Production Mode:** Requests use relative pathing to call the adjacent `api.php` on the server hosting the app.
 
-To start your local PHP server, run this in your root folder:
+To start your local PHP server with support for larger CAD drawings, run this in your root folder:
 ```bash
-php -S localhost:8000
+php -d upload_max_filesize=100M -d post_max_size=100M -S localhost:8000
 ```
 
 

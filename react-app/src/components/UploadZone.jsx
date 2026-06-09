@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { showToast } from '../hooks/useToast';
 
-export default function UploadZone({ user, onConversionSuccess }) {
+export default function UploadZone({ user, onConversionSuccess, sourceLang, setSourceLang, targetLang, setTargetLang, allowedFormat = 'vector' }) {
+  const isPdfOnly = allowedFormat === 'pdf';
   const [isDragOver, setIsDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('Optimising your file...');
@@ -44,7 +45,7 @@ export default function UploadZone({ user, onConversionSuccess }) {
   };
 
   const hasUsedConversionToday = () => {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.localhost')) {
       return false;
     }
     return localStorage.getItem(getUserConversionKey()) === 'used';
@@ -57,7 +58,19 @@ export default function UploadZone({ user, onConversionSuccess }) {
   const handleFile = async (file) => {
     if (!file) return;
 
-    if (file.name.match(/\.eps$/i)) {
+    if (isPdfOnly) {
+      if (!file.name.match(/\.pdf$/i)) {
+        showToast('Please upload a .pdf file', 'warning');
+        return;
+      }
+    } else {
+      if (!file.name.match(/\.(eps|svg)$/i)) {
+        showToast('Please upload a .svg or .eps file', 'warning');
+        return;
+      }
+    }
+
+    if (file.name.match(/\.(eps|pdf)$/i)) {
       // 1. File Size Check (50MB)
       const MAX_SIZE_MB = 50;
       if (file.size > MAX_SIZE_MB * 1024 * 1024) {
@@ -71,7 +84,8 @@ export default function UploadZone({ user, onConversionSuccess }) {
         return;
       }
 
-      // 3. Start CloudConvert Job (EPS -> SVG)
+      // 3. Start CloudConvert Job (EPS/PDF -> SVG)
+      const isPdf = file.name.match(/\.pdf$/i);
       setLoading(true);
       setLoadingText('Uploading your file...');
       setLoadingSubtext('Establishing secure connection...');
@@ -80,13 +94,13 @@ export default function UploadZone({ user, onConversionSuccess }) {
       try {
         const job = await apiService.createJob({
           'import-file': { operation: 'import/upload' },
-          'convert-file': { operation: 'convert', input: 'import-file', input_format: 'eps', output_format: 'svg' },
+          'convert-file': { operation: 'convert', input: 'import-file', input_format: isPdf ? 'pdf' : 'eps', output_format: 'svg' },
           'export-file': { operation: 'export/url', input: 'convert-file' }
         });
 
         if (!job?.data) throw new Error('Job creation failed.');
 
-        // Step A: Upload the EPS file to S3 storage returned by CloudConvert
+        // Step A: Upload the file to S3 storage returned by CloudConvert
         setLoadingText('Uploading your file...');
         const uploadTask = job.data.tasks.find(t => t.name === 'import-file');
         const uploadUrl = uploadTask.result.form.url;
@@ -101,7 +115,7 @@ export default function UploadZone({ user, onConversionSuccess }) {
         // Step B: Poll for completion
         setLoadingText('Processing...');
         const jobId = job.data.id;
-        let svgUrl = null;
+        let conversionResult = null;
 
         for (let i = 0; i < 30; i++) {
           await new Promise(res => setTimeout(res, 2000));
@@ -110,22 +124,35 @@ export default function UploadZone({ user, onConversionSuccess }) {
 
           if (status === 'finished') {
             const exportTask = statusData.data.tasks.find(t => t.operation === 'export/url');
-            svgUrl = exportTask.result.files[0].url;
+            const files = exportTask.result?.files || [];
+            
+            if (files.length === 0) {
+              throw new Error('No output files returned from conversion');
+            }
+            
+            setLoadingText('Almost done...');
+            if (files.length > 1) {
+              // Multi-page PDF: fetch all page SVGs in parallel
+              const fetchPromises = files.map(async (f) => {
+                const res = await fetch(f.url);
+                return await res.text();
+              });
+              conversionResult = await Promise.all(fetchPromises);
+            } else {
+              // Single page EPS/PDF/SVG
+              const res = await fetch(files[0].url);
+              conversionResult = await res.text();
+            }
             break;
           }
           if (status === 'error') throw new Error('Conversion error on server');
         }
 
-        if (!svgUrl) throw new Error('Conversion timed out');
-
-        // Step C: Fetch the SVG and pass it back
-        setLoadingText('Almost done...');
-        const svgRes = await fetch(svgUrl);
-        const svgText = await svgRes.text();
+        if (!conversionResult) throw new Error('Conversion timed out');
 
         setLoading(false);
         markConversionUsedToday();
-        onConversionSuccess(svgText, file.name);
+        onConversionSuccess(conversionResult, file.name);
 
       } catch (err) {
         setLoading(false);
@@ -149,7 +176,7 @@ export default function UploadZone({ user, onConversionSuccess }) {
       return;
     }
 
-    showToast('Please upload a .svg or .eps file', 'warning');
+    showToast('Please upload a valid file', 'warning');
   };
 
   const onDragOver = (e) => {
@@ -176,6 +203,115 @@ export default function UploadZone({ user, onConversionSuccess }) {
   return (
     <div className="card" id="section-upload">
       <h2>Step 1 — Upload File</h2>
+      
+      {/* Language Selectors */}
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.02)',
+        border: '1px solid #2d3748',
+        borderRadius: '12px',
+        padding: '1.25rem',
+        marginBottom: '1.5rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '1rem',
+        fontFamily: "'Plus Jakarta Sans', sans-serif"
+      }}>
+        <div style={{ flex: 1, minWidth: '200px', textAlign: 'left' }}>
+          <h3 style={{ fontSize: '0.88rem', color: '#a78bfa', fontWeight: 700, margin: '0 0 0.25rem 0' }}>
+            Translation Direction
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0, lineHeight: 1.4 }}>
+            Select the language of your drawing and the target language before uploading.
+          </p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Source Language Selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+            <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>SOURCE LANGUAGE</span>
+            <select 
+              id="sourceLang" 
+              className="lang-select" 
+              value={sourceLang}
+              onChange={(e) => setSourceLang(e.target.value)}
+              style={{
+                background: '#0f1117',
+                border: '1px solid #2d3748',
+                borderRadius: '8px',
+                color: '#e8e8f0',
+                padding: '0.5rem 0.7rem',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                height: '38px',
+                minWidth: '130px'
+              }}
+            >
+              <option value="English">English</option>
+              <option value="German">German</option>
+              <option value="French">French</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Italian">Italian</option>
+              <option value="Portuguese">Portuguese</option>
+              <option value="Dutch">Dutch</option>
+              <option value="Russian">Russian</option>
+              <option value="Chinese">Chinese</option>
+              <option value="Japanese">Japanese</option>
+              <option value="Korean">Korean</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Turkish">Turkish</option>
+              <option value="Polish">Polish</option>
+              <option value="Swedish">Swedish</option>
+              <option value="Greek">Greek</option>
+              <option value="Romanian">Romanian</option>
+            </select>
+          </div>
+
+          {/* Target Language Selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+            <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>TARGET LANGUAGE</span>
+            <select 
+              id="targetLang" 
+              className="lang-select" 
+              value={targetLang}
+              onChange={(e) => setTargetLang(e.target.value)}
+              style={{
+                background: '#0f1117',
+                border: '1px solid #2d3748',
+                borderRadius: '8px',
+                color: '#e8e8f0',
+                padding: '0.5rem 0.7rem',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                height: '38px',
+                minWidth: '130px'
+              }}
+            >
+              <option value="English|0">English</option>
+              <option value="French|30">French</option>
+              <option value="German|35">German</option>
+              <option value="Spanish|30">Spanish</option>
+              <option value="Italian|25">Italian</option>
+              <option value="Portuguese|30">Portuguese</option>
+              <option value="Dutch|25">Dutch</option>
+              <option value="Hindi|40">Hindi</option>
+              <option value="Arabic|25">Arabic</option>
+              <option value="Japanese|0">Japanese</option>
+              <option value="Chinese (Simplified)|0">Chinese (Simplified)</option>
+              <option value="Russian|15">Russian</option>
+              <option value="Turkish|20">Turkish</option>
+              <option value="Korean|0">Korean</option>
+              <option value="Polish|30">Polish</option>
+              <option value="Swedish|25">Swedish</option>
+              <option value="Greek|25">Greek</option>
+              <option value="Romanian|25">Romanian</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div
         className={`drop-zone ${isDragOver ? 'dragover' : ''}`}
         id="dropZone"
@@ -198,13 +334,17 @@ export default function UploadZone({ user, onConversionSuccess }) {
           type="file"
           id="fileInput"
           ref={fileInputRef}
-          accept=".svg,.eps"
+          accept={isPdfOnly ? ".pdf" : ".svg,.eps"}
           style={{ display: 'none' }}
           onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
         />
         <div className="drop-icon" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📂</div>
         <p style={{ fontSize: '0.88rem', color: '#9ca3af' }}>
-          Drag &amp; drop your <span style={{ color: '#a78bfa', fontWeight: 600 }}>.eps</span> or <span style={{ color: '#34d399', fontWeight: 600 }}>.svg</span> file here
+          {isPdfOnly ? (
+            <>Drag &amp; drop your <span style={{ color: '#60a5fa', fontWeight: 600 }}>.pdf</span> file here</>
+          ) : (
+            <>Drag &amp; drop your <span style={{ color: '#a78bfa', fontWeight: 600 }}>.eps</span> or <span style={{ color: '#34d399', fontWeight: 600 }}>.svg</span> file here</>
+          )}
         </p>
       </div>
 

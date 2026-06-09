@@ -49,7 +49,7 @@ export default function Header({ user, onBackToDashboard, onLogout }) {
               alt=""
             />
           ) : (
-            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f3e8ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifycontent: 'center', fontWeight: 800 }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f3e8ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
               {user.name ? user.name[0].toUpperCase() : 'U'}
             </div>
           )}

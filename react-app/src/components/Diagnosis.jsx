@@ -2,17 +2,162 @@ import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { showToast } from '../hooks/useToast';
 
+// Helper to reliably extract SVG viewbox or width/height coordinate system
+export function getSvgDimensions(svgEl) {
+  const viewBox = svgEl.getAttribute('viewBox');
+  let x = 0, y = 0, width = 800, height = 1100;
+  
+  if (viewBox) {
+    const parts = viewBox.trim().split(/\s+/).map(Number);
+    if (parts.length === 4 && parts.every(num => !isNaN(num))) {
+      return {
+        x: parts[0],
+        y: parts[1],
+        width: parts[2],
+        height: parts[3],
+        hasViewBox: true
+      };
+    }
+  }
+  
+  const wAttr = svgEl.getAttribute('width');
+  const hAttr = svgEl.getAttribute('height');
+  
+  if (wAttr) {
+    const parsedW = parseFloat(wAttr);
+    if (!isNaN(parsedW) && !wAttr.includes('%')) {
+      width = parsedW;
+    }
+  }
+  
+  if (hAttr) {
+    const parsedH = parseFloat(hAttr);
+    if (!isNaN(parsedH) && !hAttr.includes('%')) {
+      height = parsedH;
+    }
+  }
+  
+  return { x, y, width, height, hasViewBox: false };
+}
+
 export default function Diagnosis({
   filename,
   uniqueSourceTexts,
+  labels = [],
   onAiTranslationSuccess,
   onManualTranslateClick,
   hasVectorOutlines,
   user,
-  svgText
+  svgText,
+  sourceLang,
+  setSourceLang,
+  targetLang,
+  setTargetLang,
+  onOcrTranslationSuccess
 }) {
-  const [targetLang, setTargetLang] = useState('French|30'); // Format: Language|ExpansionPct
   const [translating, setTranslating] = useState(false);
+  const [ocrTranslating, setOcrTranslating] = useState(false);
+
+  const convertSvgToJpeg = () => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!svgText) {
+          reject(new Error('No SVG text content to process.'));
+          return;
+        }
+
+        // Parse SVG to manipulate elements
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgText, 'image/svg+xml');
+        const NS = 'http://www.w3.org/2000/svg';
+
+        // Find remote images and redirect them through our proxy to prevent CORS canvas tainting
+        const images = doc.getElementsByTagNameNS(NS, 'image');
+        for (let i = 0; i < images.length; i++) {
+          const href = images[i].getAttribute('href') || images[i].getAttribute('xlink:href');
+          if (href && href.startsWith('http') && !href.includes(window.location.hostname)) {
+            const proxyUrl = apiService.getProxyImageUrl(href);
+            images[i].setAttribute('href', proxyUrl);
+            images[i].removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+          }
+        }
+
+        // Serialise modified SVG back to string
+        const serializer = new XMLSerializer();
+        const modifiedSvgText = serializer.serializeToString(doc);
+
+        // Convert SVG string to base64 Data URL
+        const svgBlob = new Blob([modifiedSvgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous'; // request CORS access
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const svgEl = doc.documentElement;
+            
+            // Align canvas size exactly with true SVG viewBox/dimensions
+            const dims = getSvgDimensions(svgEl);
+            canvas.width = dims.width || 800;
+            canvas.height = dims.height || 1100;
+
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; // draw background
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            const base64Image = canvas.toDataURL('image/jpeg', 0.85);
+            URL.revokeObjectURL(url);
+            resolve(base64Image);
+          } catch (e) {
+            URL.revokeObjectURL(url);
+            reject(new Error('Canvas drawing failed: ' + e.message));
+          }
+        };
+
+        img.onerror = (err) => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to load SVG into Image object: ' + err.message));
+        };
+
+        img.src = url;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
+  const handleOcrTranslate = async () => {
+    setOcrTranslating(true);
+    showToast('Converting document layers to OCR snapshot...', 'info');
+
+    try {
+      // 1. Generate JPEG image of SVG
+      const base64Image = await convertSvgToJpeg();
+
+      showToast('Running Gemini Vision OCR Translation...', 'info');
+      
+      // 2. Call backend OCR API
+      const selectedLanguage = targetLang.split('|')[0];
+      const ocrResults = await apiService.ocrTranslate(base64Image, sourceLang, selectedLanguage);
+
+      if (!ocrResults || ocrResults.length === 0) {
+        showToast('No translatable text recognized by Gemini OCR.', 'warning');
+        return;
+      }
+
+      showToast(`OCR detected and translated ${ocrResults.length} text segments!`, 'success');
+      
+      // 3. Callback to parent App component
+      onOcrTranslationSuccess(ocrResults);
+    } catch (err) {
+      console.error('OCR translation failed:', err);
+      showToast('OCR Translation failed: ' + err.message, 'error');
+    } finally {
+      setOcrTranslating(false);
+    }
+  };
 
   // Proposal states
   const [showProposalForm, setShowProposalForm] = useState(false);
@@ -43,8 +188,8 @@ export default function Diagnosis({
     const selectedLanguage = targetLang.split('|')[0];
 
     try {
-      // Call secure backend proxy to translate texts via Gemini
-      const translationsMap = await apiService.translateText(uniqueSourceTexts, selectedLanguage);
+      // Call secure backend proxy to translate texts via Gemini, passing source language
+      const translationsMap = await apiService.translateText(uniqueSourceTexts, selectedLanguage, sourceLang);
       
       // Pass the translations map back to the App parent component
       onAiTranslationSuccess(translationsMap);
@@ -80,6 +225,7 @@ export default function Diagnosis({
         email: customerEmail.trim(),
         filename,
         targetLanguage: selectedLanguage,
+        sourceLanguage: sourceLang,
         svgText,
         message: proposalMessage.trim()
       });
@@ -100,6 +246,176 @@ export default function Diagnosis({
     const bytes = svgText.length;
     if (bytes < 1024) return bytes + ' B';
     return (bytes / 1024).toFixed(1) + ' KB';
+  };
+
+  const handleDownloadTextList = () => {
+    if (labels.length === 0) return;
+    const fileContent = labels.map(l => l.source).join('\n');
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename ? filename.replace(/\.(eps|svg)$/i, '') : 'drawing'}_text_list.txt`;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
+    showToast('Text list downloaded successfully!', 'success');
+  };
+
+  const convertSvgToPngBytes = () => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!svgText) {
+          reject(new Error('No SVG text content to process.'));
+          return;
+        }
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svgText, 'image/svg+xml');
+        const NS = 'http://www.w3.org/2000/svg';
+
+        const images = doc.getElementsByTagNameNS(NS, 'image');
+        for (let i = 0; i < images.length; i++) {
+          const href = images[i].getAttribute('href') || images[i].getAttribute('xlink:href');
+          if (href && href.startsWith('http') && !href.includes(window.location.hostname)) {
+            const proxyUrl = apiService.getProxyImageUrl(href);
+            images[i].setAttribute('href', proxyUrl);
+            images[i].removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+          }
+        }
+
+        const serializer = new XMLSerializer();
+        const modifiedSvgText = serializer.serializeToString(doc);
+        const svgBlob = new Blob([modifiedSvgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const svgEl = doc.documentElement;
+            const dims = getSvgDimensions(svgEl);
+            
+            const svgWidth = dims.width || 800;
+            const svgHeight = dims.height || 1100;
+
+            const canvasWidth = 2480;
+            const canvasHeight = Math.round(canvasWidth * (svgHeight / svgWidth));
+
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            const b64Data = canvas.toDataURL('image/png').split(',')[1];
+            const binaryString = window.atob(b64Data);
+            const len = binaryString.length;
+            const pngBytes = new Uint8Array(len);
+            for (let k = 0; k < len; k++) {
+              pngBytes[k] = binaryString.charCodeAt(k);
+            }
+
+            URL.revokeObjectURL(url);
+            resolve({ pngBytes, svgWidth, svgHeight });
+          } catch (e) {
+            URL.revokeObjectURL(url);
+            reject(e);
+          }
+        };
+        img.onerror = (err) => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to load SVG into image: ' + err.message));
+        };
+        img.src = url;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
+  const handleDownloadWordDoc = async () => {
+    if (labels.length === 0) return;
+    try {
+      showToast('Preparing Word document...', 'info');
+      
+      // Load docx library if not loaded
+      if (!window.docx) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const { Document, Paragraph, ImageRun, Packer } = window.docx;
+      
+      const { pngBytes, svgWidth, svgHeight } = await convertSvgToPngBytes();
+
+      const a4WidthTwips = 11906;
+      const a4HeightTwips = 16838;
+      const marginTwips = 720;
+      const usableWidthTwips = a4WidthTwips - 2 * marginTwips;
+      const usableHeightTwips = a4HeightTwips - 2 * marginTwips;
+
+      const usableWidthEmu = usableWidthTwips * 635;
+      const usableHeightEmu = usableHeightTwips * 635;
+
+      const aspectRatio = svgHeight / svgWidth;
+      let imgWidthEmu = usableWidthEmu;
+      let imgHeightEmu = Math.round(imgWidthEmu * aspectRatio);
+
+      if (imgHeightEmu > usableHeightEmu) {
+        imgHeightEmu = usableHeightEmu;
+        imgWidthEmu = Math.round(imgHeightEmu / aspectRatio);
+      }
+
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: {
+              size: { width: a4WidthTwips, height: a4HeightTwips },
+              margin: { top: marginTwips, bottom: marginTwips, left: marginTwips, right: marginTwips }
+            }
+          },
+          children: [
+            new Paragraph({
+              children: [
+                new ImageRun({
+                  data: pngBytes,
+                  transformation: {
+                    width: imgWidthEmu / 9525,
+                    height: imgHeightEmu / 9525
+                  }
+                })
+              ]
+            })
+          ]
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanStem = filename ? filename.replace(/\.(eps|svg)$/i, '') : 'drawing';
+      a.download = `${cleanStem}_translated.docx`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+      showToast('Word document downloaded successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('DOCX export failed: ' + err.message, 'error');
+    }
   };
 
   return (
@@ -211,10 +527,10 @@ export default function Diagnosis({
         }}>
           <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
             <div className="num" style={{ fontSize: '1.4rem', fontWeight: 700, color: '#7c3aed' }}>
-              {uniqueSourceTexts.length}
+              {labels.length}
             </div>
             <div className="lbl" style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '0.2rem' }}>
-              unique strings found
+              total strings found
             </div>
           </div>
           <div className="stat-box" style={{ background: '#0f1117', border: '1px solid #1f2937', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}>
@@ -227,99 +543,348 @@ export default function Diagnosis({
           </div>
         </div>
 
-        <p id="diagAction" style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-          All texts inside the vector file are editable. Select one of the translation methods below to translate the blueprint:
-        </p>
+        {labels.length > 0 && (
+          <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+            <button 
+              className="btn btn-ghost" 
+              onClick={handleDownloadWordDoc}
+              style={{
+                fontSize: '0.75rem',
+                padding: '0.45rem 1.25rem',
+                borderColor: '#cbd5e1',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                margin: 0
+              }}
+            >
+              📄 Download Word Document (.docx)
+            </button>
+          </div>
+        )}
 
-        {/* Option A: Direct AI Translation (Instant) */}
-        <div
-          style={{
-            background: 'rgba(124, 58, 237, 0.03)',
-            border: '1px solid rgba(124, 58, 237, 0.15)',
+        {labels.length === 0 && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
             borderRadius: '10px',
             padding: '1.25rem',
-            marginBottom: '1.25rem'
-          }}
-          className="diagnosis-option-card"
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-            <div style={{ flex: 1, minWidth: '240px' }}>
-              <h3 style={{ fontSize: '0.88rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.25rem' }}>
-                Option A: Instant AI Translation ⚡
-              </h3>
-              <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0, lineHeight: 1.4 }}>
-                Translate all text inside your drawing instantly using our secure neural translator API.
-              </p>
-            </div>
-            
-            {/* Language Selector */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>SELECT TARGET LANGUAGE</span>
-              <select 
-                id="targetLang" 
-                className="lang-select" 
-                value={targetLang}
-                onChange={(e) => setTargetLang(e.target.value)}
-                style={{
-                  background: '#0f1117',
-                  border: '1px solid #2d3748',
-                  borderRadius: '8px',
-                  color: '#e8e8f0',
-                  padding: '0.5rem 0.7rem',
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  height: '38px'
-                }}
-              >
-                <option value="French|30">French</option>
-                <option value="German|35">German</option>
-                <option value="Spanish|30">Spanish</option>
-                <option value="Italian|25">Italian</option>
-                <option value="Portuguese|30">Portuguese</option>
-                <option value="Dutch|25">Dutch</option>
-                <option value="Hindi|40">Hindi</option>
-                <option value="Arabic|25">Arabic</option>
-                <option value="Japanese|0">Japanese</option>
-                <option value="Chinese (Simplified)|0">Chinese (Simplified)</option>
-                <option value="Russian|15">Russian</option>
-                <option value="Turkish|20">Turkish</option>
-                <option value="Korean|0">Korean</option>
-                <option value="Polish|30">Polish</option>
-                <option value="Swedish|25">Swedish</option>
-              </select>
-            </div>
+            marginBottom: '1.5rem',
+            fontSize: '0.8rem',
+            color: '#f87171',
+            lineHeight: 1.55,
+            textAlign: 'left',
+            fontFamily: "'Plus Jakarta Sans', sans-serif"
+          }}>
+            <h4 style={{ fontSize: '0.9rem', color: '#f87171', fontWeight: 800, margin: '0 0 0.5rem 0' }}>
+              ⚠️ No Text Elements Detected
+            </h4>
+            <p style={{ margin: '0 0 0.75rem 0' }}>
+              We scanned the document but found <strong>0 text strings</strong>. This typically happens for one of the following reasons:
+            </p>
+            <ul style={{ paddingLeft: '1.25rem', margin: '0 0 1rem 0', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <li><strong>Scanned Document:</strong> The file is a scan, photograph, or screenshot of text. The computer sees it as a flat picture, not editable letters.</li>
+              <li><strong>Text-to-Curves / Outlines:</strong> The text was converted into vector outlines (lines and curves) during export to preserve font styling, which deletes the actual characters.</li>
+            </ul>
+            <h5 style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 700, margin: '0 0 0.35rem 0' }}>
+              Recommended Next Steps:
+            </h5>
+            <ol style={{ paddingLeft: '1.25rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <li><strong>Re-export the file:</strong> If exporting from AutoCAD, MS Word, or Illustrator, choose settings like <em>"Embed Fonts"</em> or <em>"Save Text as Text"</em> rather than converting text to shapes.</li>
+              <li><strong>Use Option B below:</strong> Click "Contact Our Team &amp; Get Quote" to have our professional translators manually recreate and translate the document layout for you.</li>
+            </ol>
           </div>
+        )}
 
-          <button 
-            className="btn btn-primary" 
-            onClick={handleAiTranslate}
-            disabled={translating}
-            style={{ 
-              margin: 0, 
-              padding: '0.65rem 1.5rem', 
-              width: '100%', 
-              cursor: translating ? 'not-allowed' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem'
+        {labels.length > 0 ? (
+          <p id="diagAction" style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+            All texts inside the vector file are editable. Select one of the translation methods below to translate the blueprint:
+          </p>
+        ) : (
+          <p id="diagAction" style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+            No editable text detected. Select Option B below to contact our professional translation team:
+          </p>
+        )}
+
+        {/* Option A: Direct AI Translation (Instant) */}
+        {labels.length > 0 ? (
+          <div
+            style={{
+              background: 'rgba(124, 58, 237, 0.03)',
+              border: '1px solid rgba(124, 58, 237, 0.15)',
+              borderRadius: '10px',
+              padding: '1.25rem',
+              marginBottom: '1.25rem'
             }}
+            className="diagnosis-option-card"
           >
-            {translating ? (
-              <>
-                <span className="spinner" style={{
-                  width: '14px',
-                  height: '14px',
-                  border: '2px solid rgba(255,255,255,0.3)',
-                  borderTopColor: '#fff',
-                  borderRadius: '50%',
-                  animation: 'epsSpin 1s linear infinite'
-                }}></span>
-                Translating Drawing...
-              </>
-            ) : 'Translate with AI ⚡'}
-          </button>
-        </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1, minWidth: '240px' }}>
+                <h3 style={{ fontSize: '0.88rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  Option A: Instant AI Translation ⚡
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0, lineHeight: 1.4 }}>
+                  Translate all text inside your drawing instantly using our secure neural translator API.
+                </p>
+              </div>
+              
+              {/* Language Selectors */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {/* Source Language Selector */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>SOURCE LANGUAGE</span>
+                  <select 
+                    id="sourceLang" 
+                    className="lang-select" 
+                    value={sourceLang}
+                    onChange={(e) => setSourceLang(e.target.value)}
+                    style={{
+                      background: '#0f1117',
+                      border: '1px solid #2d3748',
+                      borderRadius: '8px',
+                      color: '#e8e8f0',
+                      padding: '0.5rem 0.7rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      height: '38px',
+                      minWidth: '130px'
+                    }}
+                  >
+                    <option value="English">English</option>
+                    <option value="German">German</option>
+                    <option value="French">French</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="Italian">Italian</option>
+                    <option value="Portuguese">Portuguese</option>
+                    <option value="Dutch">Dutch</option>
+                    <option value="Russian">Russian</option>
+                    <option value="Chinese">Chinese</option>
+                    <option value="Japanese">Japanese</option>
+                    <option value="Korean">Korean</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Hindi">Hindi</option>
+                    <option value="Turkish">Turkish</option>
+                    <option value="Polish">Polish</option>
+                    <option value="Swedish">Swedish</option>
+                    <option value="Greek">Greek</option>
+                    <option value="Romanian">Romanian</option>
+                  </select>
+                </div>
+
+                {/* Target Language Selector */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>SELECT TARGET LANGUAGE</span>
+                  <select 
+                    id="targetLang" 
+                    className="lang-select" 
+                    value={targetLang}
+                    onChange={(e) => setTargetLang(e.target.value)}
+                    style={{
+                      background: '#0f1117',
+                      border: '1px solid #2d3748',
+                      borderRadius: '8px',
+                      color: '#e8e8f0',
+                      padding: '0.5rem 0.7rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      height: '38px',
+                      minWidth: '130px'
+                    }}
+                  >
+                    <option value="English|0">English</option>
+                    <option value="French|30">French</option>
+                    <option value="German|35">German</option>
+                    <option value="Spanish|30">Spanish</option>
+                    <option value="Italian|25">Italian</option>
+                    <option value="Portuguese|30">Portuguese</option>
+                    <option value="Dutch|25">Dutch</option>
+                    <option value="Hindi|40">Hindi</option>
+                    <option value="Arabic|25">Arabic</option>
+                    <option value="Japanese|0">Japanese</option>
+                    <option value="Chinese (Simplified)|0">Chinese (Simplified)</option>
+                    <option value="Russian|15">Russian</option>
+                    <option value="Turkish|20">Turkish</option>
+                    <option value="Korean|0">Korean</option>
+                    <option value="Polish|30">Polish</option>
+                    <option value="Swedish|25">Swedish</option>
+                    <option value="Greek|25">Greek</option>
+                    <option value="Romanian|25">Romanian</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              className="btn btn-primary" 
+              onClick={handleAiTranslate}
+              disabled={translating}
+              style={{ 
+                margin: 0, 
+                padding: '0.65rem 1.5rem', 
+                width: '100%', 
+                cursor: translating ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              {translating ? (
+                <>
+                  <span className="spinner" style={{
+                    width: '14px',
+                    height: '14px',
+                    border: '2px solid rgba(255,255,255,0.3)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    animation: 'epsSpin 1s linear infinite'
+                  }}></span>
+                  Translating Drawing...
+                </>
+              ) : 'Translate with AI ⚡'}
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              background: 'rgba(124, 58, 237, 0.03)',
+              border: '1px solid rgba(124, 58, 237, 0.15)',
+              borderRadius: '10px',
+              padding: '1.25rem',
+              marginBottom: '1.25rem'
+            }}
+            className="diagnosis-option-card"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1, minWidth: '240px' }}>
+                <h3 style={{ fontSize: '0.88rem', color: '#a78bfa', fontWeight: 700, marginBottom: '0.25rem', textAlign: 'left' }}>
+                  Option A: Scanned Document OCR Translation ⚡
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0, lineHeight: 1.4, textAlign: 'left' }}>
+                  Use Gemini Vision OCR to scan the drawing layout, recognize original words, and translate them dynamically.
+                </p>
+              </div>
+              
+              {/* Language Selectors */}
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {/* Source Language Selector */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>SOURCE LANGUAGE</span>
+                  <select 
+                    id="sourceLang" 
+                    className="lang-select" 
+                    value={sourceLang}
+                    onChange={(e) => setSourceLang(e.target.value)}
+                    style={{
+                      background: '#0f1117',
+                      border: '1px solid #2d3748',
+                      borderRadius: '8px',
+                      color: '#e8e8f0',
+                      padding: '0.5rem 0.7rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      height: '38px',
+                      minWidth: '130px'
+                    }}
+                  >
+                    <option value="English">English</option>
+                    <option value="German">German</option>
+                    <option value="French">French</option>
+                    <option value="Spanish">Spanish</option>
+                    <option value="Italian">Italian</option>
+                    <option value="Portuguese">Portuguese</option>
+                    <option value="Dutch">Dutch</option>
+                    <option value="Russian">Russian</option>
+                    <option value="Chinese">Chinese</option>
+                    <option value="Japanese">Japanese</option>
+                    <option value="Korean">Korean</option>
+                    <option value="Arabic">Arabic</option>
+                    <option value="Hindi">Hindi</option>
+                    <option value="Turkish">Turkish</option>
+                    <option value="Polish">Polish</option>
+                    <option value="Swedish">Swedish</option>
+                    <option value="Greek">Greek</option>
+                    <option value="Romanian">Romanian</option>
+                  </select>
+                </div>
+
+                {/* Target Language Selector */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#6b7280', fontWeight: 800, letterSpacing: '0.05em' }}>SELECT TARGET LANGUAGE</span>
+                  <select 
+                    id="targetLang" 
+                    className="lang-select" 
+                    value={targetLang}
+                    onChange={(e) => setTargetLang(e.target.value)}
+                    style={{
+                      background: '#0f1117',
+                      border: '1px solid #2d3748',
+                      borderRadius: '8px',
+                      color: '#e8e8f0',
+                      padding: '0.5rem 0.7rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      height: '38px',
+                      minWidth: '130px'
+                    }}
+                  >
+                    <option value="English|0">English</option>
+                    <option value="French|30">French</option>
+                    <option value="German|35">German</option>
+                    <option value="Spanish|30">Spanish</option>
+                    <option value="Italian|25">Italian</option>
+                    <option value="Portuguese|30">Portuguese</option>
+                    <option value="Dutch|25">Dutch</option>
+                    <option value="Hindi|40">Hindi</option>
+                    <option value="Arabic|25">Arabic</option>
+                    <option value="Japanese|0">Japanese</option>
+                    <option value="Chinese (Simplified)|0">Chinese (Simplified)</option>
+                    <option value="Russian|15">Russian</option>
+                    <option value="Turkish|20">Turkish</option>
+                    <option value="Korean|0">Korean</option>
+                    <option value="Polish|30">Polish</option>
+                    <option value="Swedish|25">Swedish</option>
+                    <option value="Greek|25">Greek</option>
+                    <option value="Romanian|25">Romanian</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              className="btn btn-primary" 
+              onClick={handleOcrTranslate}
+              disabled={ocrTranslating}
+              style={{ 
+                margin: 0, 
+                padding: '0.65rem 1.5rem', 
+                width: '100%', 
+                cursor: ocrTranslating ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                background: 'linear-gradient(135deg, #7c3aed, #4f46e5)'
+              }}
+            >
+              {ocrTranslating ? (
+                <>
+                  <span className="spinner" style={{
+                    width: '14px',
+                    height: '14px',
+                    border: '2px solid rgba(255,255,255,0.3)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    animation: 'epsSpin 1s linear infinite'
+                  }}></span>
+                  Running OCR Visual Translation...
+                </>
+              ) : 'Translate Scanned Document with OCR ⚡'}
+            </button>
+          </div>
+        )}
 
         {/* Option B: Contact Our Team (Professional Service) */}
         {proposalSent ? (
@@ -452,7 +1017,27 @@ export default function Diagnosis({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div>
+                <span className="proposal-label">Source Language</span>
+                <div style={{
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  marginTop: '0.25rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}>
+                  🌐 {sourceLang}
+                </div>
+              </div>
               <div>
                 <span className="proposal-label">Target Language</span>
                 <div style={{
@@ -466,13 +1051,15 @@ export default function Diagnosis({
                   marginTop: '0.25rem',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem'
+                  gap: '0.35rem',
+                  width: '100%',
+                  boxSizing: 'border-box'
                 }}>
                   🌐 {targetLang.split('|')[0]}
                 </div>
               </div>
               <div>
-                <span className="proposal-label">Unique Text Segments</span>
+                <span className="proposal-label">Total Text Segments</span>
                 <div style={{
                   background: '#f1f5f9',
                   color: '#475569',
@@ -484,9 +1071,11 @@ export default function Diagnosis({
                   marginTop: '0.25rem',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem'
+                  gap: '0.35rem',
+                  width: '100%',
+                  boxSizing: 'border-box'
                 }}>
-                  📊 {uniqueSourceTexts.length} segments
+                  📊 {labels.length} segments
                 </div>
               </div>
             </div>

@@ -1,8 +1,4 @@
 export default function Dashboard({ user, onSelectTool }) {
-  const launchLingoGenie = () => {
-    // Launch LingoGenie URL in a new tab (can be updated to the final app url)
-    window.open('https://lingochaps.com', '_blank');
-  };
 
   const getFirstName = (fullName) => {
     if (!fullName) return 'User';
@@ -18,6 +14,10 @@ export default function Dashboard({ user, onSelectTool }) {
       overflowY: 'auto',
       fontFamily: "'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif"
     }}>
+      {/* Background Orbs */}
+      <div className="glow-orb glow-orb-1" />
+      <div className="glow-orb glow-orb-2" />
+
       {/* Top Bar inside Dashboard */}
       <div style={{
         display: 'flex',
@@ -43,7 +43,7 @@ export default function Dashboard({ user, onSelectTool }) {
             Intelligent Suite
           </span>
         </div>
-        <div id="dashboard-user" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem', color: '#475569' }}>
+        <div id="dashboard-user" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.8rem', color: '#475569', position: 'relative', zIndex: 11 }}>
           {user.picture && (
             <img
               src={user.picture}
@@ -56,7 +56,7 @@ export default function Dashboard({ user, onSelectTool }) {
       </div>
 
       {/* Hero Welcome Section */}
-      <div style={{ textAlign: 'center', padding: '3.5rem 2rem 2rem' }} className="dashboard-hero">
+      <div style={{ textAlign: 'center', padding: '3.5rem 2rem 2rem', position: 'relative', zIndex: 2 }} className="dashboard-hero">
         <div style={{
           fontSize: '0.72rem',
           fontWeight: 700,
@@ -82,24 +82,16 @@ export default function Dashboard({ user, onSelectTool }) {
         gap: '1.5rem',
         maxWidth: '1000px',
         margin: '0 auto',
-        padding: '1rem 2.5rem 4rem'
+        padding: '1rem 2.5rem 4rem',
+        position: 'relative',
+        zIndex: 2
       }} className="dashboard-grid">
 
         {/* LingoGenie Card */}
         <div
-          onClick={launchLingoGenie}
+          onClick={() => onSelectTool('aura-lingogenie')}
           className="tool-card purple-theme"
-          style={{
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '20px',
-            padding: '2rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}
+          style={{ position: 'relative', overflow: 'hidden' }}
         >
           <div style={{
             position: 'absolute',
@@ -111,7 +103,7 @@ export default function Dashboard({ user, onSelectTool }) {
             borderRadius: '50%',
             transform: 'translate(20px, -20px)'
           }} />
-          <div style={{
+          <div className="icon-wrapper" style={{
             width: '48px',
             height: '48px',
             borderRadius: '14px',
@@ -129,10 +121,10 @@ export default function Dashboard({ user, onSelectTool }) {
             Translation
           </div>
           <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>LingoGenie</h3>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6, marginBottom: '1.25rem', flex: 1 }}>
             AI-powered multilingual translation engine. Translate content across 50+ languages instantly.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
+          <div className="launch-link" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: '#7c3aed' }}>
             Launch tool <span style={{ fontSize: '1rem' }}>→</span>
           </div>
         </div>
@@ -141,17 +133,7 @@ export default function Dashboard({ user, onSelectTool }) {
         <div
           onClick={() => onSelectTool('aura-eps')}
           className="tool-card green-theme"
-          style={{
-            background: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '20px',
-            padding: '2rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}
+          style={{ position: 'relative', overflow: 'hidden' }}
         >
           <div style={{
             position: 'absolute',
@@ -163,7 +145,7 @@ export default function Dashboard({ user, onSelectTool }) {
             borderRadius: '50%',
             transform: 'translate(20px, -20px)'
           }} />
-          <div style={{
+          <div className="icon-wrapper" style={{
             width: '48px',
             height: '48px',
             borderRadius: '14px',
@@ -181,69 +163,107 @@ export default function Dashboard({ user, onSelectTool }) {
             Localization
           </div>
           <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>Aura EPS Tool</h3>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6, marginBottom: '1.25rem', flex: 1 }}>
             Visual EPS translation editor. Diagnose, translate and fine-tune vector graphics live.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: '#059669' }}>
+          <div className="launch-link" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: '#059669' }}>
             Launch tool <span style={{ fontSize: '1rem' }}>→</span>
           </div>
         </div>
 
-        {/* Coming Soon: DWG Conversion */}
+        {/* DWG Conversion */}
         <div
-          className="tool-card disabled-card"
-          style={{
-            background: '#fafafa',
-            border: '1.5px dashed #cbd5e1',
-            borderRadius: '20px',
-            padding: '2rem',
-            position: 'relative',
-            overflow: 'hidden'
-          }}
+          onClick={() => onSelectTool('aura-dwg')}
+          className="tool-card blue-theme"
+          style={{ position: 'relative', overflow: 'hidden' }}
         >
           <div style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: '120px',
+            height: '120px',
+            background: 'radial-gradient(circle, rgba(59, 130, 246, 0.12), transparent 70%)',
+            borderRadius: '50%',
+            transform: 'translate(20px, -20px)'
+          }} />
+          <div className="icon-wrapper" style={{
             width: '48px',
             height: '48px',
             borderRadius: '14px',
-            background: '#f1f5f9',
+            background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontSize: '1.4rem',
-            marginBottom: '1.25rem'
+            marginBottom: '1.25rem',
+            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
           }}>
             📐
           </div>
-          <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#94a3b8', marginBottom: '0.4rem' }}>
-            Coming Soon
+          <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#2563eb', marginBottom: '0.4rem' }}>
+            Localization
           </div>
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#94a3b8', marginBottom: '0.5rem' }}>Aura DWG Tool</h3>
-          <p style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-            Visual AutoCAD (.dwg) translation workflow. Preserves all blocks, fonts, and coordinate scales.
+          <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>Aura DWG Tool</h3>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6, marginBottom: '1.25rem', flex: 1 }}>
+            AutoCAD (.dwg) translation workflow. Preserves all CAD coordinates, blocks, text attributes, and layers.
           </p>
-          <div style={{
-            display: 'inline-block',
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            color: '#94a3b8',
-            background: '#f1f5f9',
-            padding: '0.25rem 0.7rem',
-            borderRadius: '100px'
-          }}>
-            In development
+          <div className="launch-link" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: '#2563eb' }}>
+            Launch tool <span style={{ fontSize: '1rem' }}>→</span>
           </div>
         </div>
+
+        {/* PDF to Word Converter */}
+          <div
+            onClick={() => onSelectTool('aura-pdf-converter')}
+            className="tool-card amber-theme"
+            style={{ position: 'relative', overflow: 'hidden' }}
+          >
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: '120px',
+              height: '120px',
+              background: 'radial-gradient(circle, rgba(251, 191, 36, 0.14), transparent 70%)',
+              borderRadius: '50%',
+              transform: 'translate(20px, -20px)'
+            }} />
+            <div className="icon-wrapper" style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, #d97706, #fbbf24)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.4rem',
+              marginBottom: '1.25rem',
+              boxShadow: '0 4px 12px rgba(217, 119, 6, 0.3)'
+            }}>
+              📝
+            </div>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#d97706', marginBottom: '0.4rem' }}>
+              Conversion
+            </div>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.5rem' }}>PDF to Word Converter</h3>
+            <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6, marginBottom: '1.25rem', flex: 1 }}>
+              Convert any PDF into a perfectly formatted, fully editable Word (.docx) file. Handles text, scanned, tables, forms, and image-only PDFs with OCR.
+            </p>
+            <div className="launch-link" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 600, color: '#d97706' }}>
+              Launch tool <span style={{ fontSize: '1rem' }}>→</span>
+            </div>
+          </div>
 
         {/* Coming Soon: CDR Conversion */}
         <div
           className="tool-card disabled-card"
           style={{
-            background: '#fafafa',
+            background: 'rgba(250, 250, 250, 0.4)',
             border: '1.5px dashed #cbd5e1',
-            borderRadius: '20px',
-            padding: '2rem',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            cursor: 'not-allowed'
           }}
         >
           <div style={{
@@ -263,7 +283,7 @@ export default function Dashboard({ user, onSelectTool }) {
             Coming Soon
           </div>
           <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#94a3b8', marginBottom: '0.5rem' }}>Aura CDR Tool</h3>
-          <p style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+          <p style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.6, marginBottom: '1.25rem', flex: 1 }}>
             Visual CorelDraw (.cdr) design translation system. Keep layers, graphic paths, and margins locked.
           </p>
           <div style={{
@@ -273,7 +293,8 @@ export default function Dashboard({ user, onSelectTool }) {
             color: '#94a3b8',
             background: '#f1f5f9',
             padding: '0.25rem 0.7rem',
-            borderRadius: '100px'
+            borderRadius: '100px',
+            alignSelf: 'flex-start'
           }}>
             In development
           </div>

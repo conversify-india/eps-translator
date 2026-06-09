@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { showToast } from '../hooks/useToast';
+import { applyTranslationsToRawSvg } from '../utils/svgParser';
 
 // Detect if a label is a pure technical code that intentionally stayed unchanged
 function isTechnicalCode(source, translation) {
@@ -15,12 +16,51 @@ function isTechnicalCode(source, translation) {
   return false;
 }
 
+function getSvgDimensions(svgEl) {
+  const viewBox = svgEl.getAttribute('viewBox');
+  let x = 0, y = 0, width = 800, height = 1100;
+  
+  if (viewBox) {
+    const parts = viewBox.trim().split(/\s+/).map(Number);
+    if (parts.length === 4 && parts.every(num => !isNaN(num))) {
+      return {
+        x: parts[0],
+        y: parts[1],
+        width: parts[2],
+        height: parts[3],
+        hasViewBox: true
+      };
+    }
+  }
+  
+  const wAttr = svgEl.getAttribute('width');
+  const hAttr = svgEl.getAttribute('height');
+  
+  if (wAttr) {
+    const parsedW = parseFloat(wAttr);
+    if (!isNaN(parsedW) && !wAttr.includes('%')) {
+      width = parsedW;
+    }
+  }
+  
+  if (hAttr) {
+    const parsedH = parseFloat(hAttr);
+    if (!isNaN(parsedH) && !hAttr.includes('%')) {
+      height = parsedH;
+    }
+  }
+  
+  return { x, y, width, height, hasViewBox: false };
+}
+
 export default function QAReport({
   filename,
   labels,
   svgText,
+  originalSvgText,
   globalScale,
-  onStartOverClick
+  onStartOverClick,
+  pages = []
 }) {
   const [exporting, setExporting] = useState(false);
   const [exportText, setExportText] = useState('Download Translated EPS ↓');
@@ -28,6 +68,168 @@ export default function QAReport({
   const [loadingSubtext, setLoadingSubtext] = useState('Structuring translated vectors...');
   const [showWarning, setShowWarning] = useState(false);
   const [exportingSvg, setExportingSvg] = useState(false);
+
+  const convertSvgToPngBytes = (pageSvg) => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!pageSvg) {
+          reject(new Error('No SVG text content to process.'));
+          return;
+        }
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(pageSvg, 'image/svg+xml');
+        const NS = 'http://www.w3.org/2000/svg';
+
+        const images = doc.getElementsByTagNameNS(NS, 'image');
+        for (let i = 0; i < images.length; i++) {
+          const href = images[i].getAttribute('href') || images[i].getAttribute('xlink:href');
+          if (href && href.startsWith('http') && !href.includes(window.location.hostname)) {
+            const proxyUrl = apiService.getProxyImageUrl(href);
+            images[i].setAttribute('href', proxyUrl);
+            images[i].removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+          }
+        }
+
+        const serializer = new XMLSerializer();
+        const modifiedSvgText = serializer.serializeToString(doc);
+        const svgBlob = new Blob([modifiedSvgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const svgEl = doc.documentElement;
+            const dims = getSvgDimensions(svgEl);
+            
+            const svgWidth = dims.width || 800;
+            const svgHeight = dims.height || 1100;
+
+            const canvasWidth = 2480;
+            const canvasHeight = Math.round(canvasWidth * (svgHeight / svgWidth));
+
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            const b64Data = canvas.toDataURL('image/png').split(',')[1];
+            const binaryString = window.atob(b64Data);
+            const len = binaryString.length;
+            const pngBytes = new Uint8Array(len);
+            for (let k = 0; k < len; k++) {
+              pngBytes[k] = binaryString.charCodeAt(k);
+            }
+
+            URL.revokeObjectURL(url);
+            resolve({ pngBytes, svgWidth, svgHeight });
+          } catch (e) {
+            URL.revokeObjectURL(url);
+            reject(e);
+          }
+        };
+        img.onerror = (err) => {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to load SVG into image: ' + err.message));
+        };
+        img.src = url;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
+  const handleDownloadDocx = async () => {
+    try {
+      showToast('Preparing Word document...', 'info');
+      
+      // Load docx library if not loaded
+      if (!window.docx) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const { Document, Paragraph, ImageRun, Packer } = window.docx;
+      
+      const docxSections = [];
+      const itemsToProcess = pages.length > 1 ? pages : [{ svgText, originalSvgText, labels }];
+
+      for (let idx = 0; idx < itemsToProcess.length; idx++) {
+        const page = itemsToProcess[idx];
+        const pageSvg = buildFinalSvgForPage(page);
+        
+        const { pngBytes, svgWidth, svgHeight } = await convertSvgToPngBytes(pageSvg);
+
+        const a4WidthTwips = 11906;
+        const a4HeightTwips = 16838;
+        const marginTwips = 720;
+        const usableWidthTwips = a4WidthTwips - 2 * marginTwips;
+        const usableHeightTwips = a4HeightTwips - 2 * marginTwips;
+
+        const usableWidthEmu = usableWidthTwips * 635;
+        const usableHeightEmu = usableHeightTwips * 635;
+
+        const aspectRatio = svgHeight / svgWidth;
+        let imgWidthEmu = usableWidthEmu;
+        let imgHeightEmu = Math.round(imgWidthEmu * aspectRatio);
+
+        if (imgHeightEmu > usableHeightEmu) {
+          imgHeightEmu = usableHeightEmu;
+          imgWidthEmu = Math.round(imgHeightEmu / aspectRatio);
+        }
+
+        docxSections.push({
+          properties: {
+            page: {
+              size: { width: a4WidthTwips, height: a4HeightTwips },
+              margin: { top: marginTwips, bottom: marginTwips, left: marginTwips, right: marginTwips }
+            }
+          },
+          children: [
+            new Paragraph({
+              children: [
+                new ImageRun({
+                  data: pngBytes,
+                  transformation: {
+                    width: imgWidthEmu / 9525,
+                    height: imgHeightEmu / 9525
+                  }
+                })
+              ]
+            })
+          ]
+        });
+      }
+
+      const doc = new Document({
+        sections: docxSections
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanStem = filename ? filename.replace(/\.(eps|svg)$/i, '') : 'drawing';
+      a.download = `${cleanStem}_translated.docx`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+      showToast('Word document downloaded successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('DOCX export failed: ' + err.message, 'error');
+    }
+  };
 
   const loadingMessages = [
     "Structuring translated vectors...",
@@ -74,103 +276,139 @@ export default function QAReport({
 
   const { total, genuineTranslated, techcode, unchanged, missing, shrunk } = getStats();
 
-  // Build finalized SVG doc with all translations applied
-  const buildFinalSvg = () => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgText, 'image/svg+xml');
-    const svgRoot = doc.querySelector('svg');
-    if (!svgRoot) throw new Error('Invalid SVG content.');
+  /**
+   * Builds the final clean SVG for export:
+   *  1. Starts from the original (or normalised) SVG — not the DOM-polluted editor copy.
+   *  2. Applies ALL translations (AI + manual) via raw string replacement.
+   *  3. If any style overrides exist, applies them via DOM and re-serialises.
+   * This guarantees: bold stays bold, manual translations are included, and
+   * data-label-id attributes never appear in the exported file.
+   */
+  const buildFinalSvgForPage = (page) => {
+    const base = page.originalSvgText || page.svgText;
+    if (!base) throw new Error('No SVG content to export.');
 
-    labels.forEach((label) => {
-      const ts = doc.querySelector(`[data-label-id="${label.id}"]`);
-      if (!ts) return;
-      ts.textContent = label.translation || label.source;
-      const fs = label.fontSizeOverride !== undefined ? label.fontSizeOverride : label.baseFontSize;
-      ts.style.fontSize = (fs * (globalScale || 1)) + 'px';
-
-      // Smart font-family: only switch to Noto Sans when translation uses non-Latin scripts.
-      // Preserving the original font for Latin translations keeps exact character metrics
-      // so the export looks identical in spacing and layout to the source file.
-      const translatedText = label.translation || label.source;
-      const needsNoto = /[\u0400-\u04FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\u0900-\u097F\u0600-\u06FF\u0590-\u05FF\uAC00-\uD7AF]/.test(translatedText);
-      if (needsNoto) {
-        ts.style.fontFamily = "'Noto Sans', 'Noto Sans Devanagari', 'Noto Naskh Arabic', 'Noto Sans CJK SC', Arial, sans-serif";
-      } else {
-        ts.style.fontFamily = ''; // keep original SVG font attribute
-      }
-
-      if (label.dxOverride !== undefined) ts.setAttribute('dx', label.dxOverride); else ts.removeAttribute('dx');
-      if (label.dyOverride !== undefined) ts.setAttribute('dy', label.dyOverride); else ts.removeAttribute('dy');
-      if (label.letterSpacingOverride !== undefined) ts.style.letterSpacing = label.letterSpacingOverride + 'px'; else ts.style.letterSpacing = '';
-
-      if (label.haloOverride || label.isOriginalInvisible) {
-        let defs = svgRoot.querySelector('defs');
-        if (!defs) { defs = doc.createElementNS('http://www.w3.org/2000/svg', 'defs'); svgRoot.insertBefore(defs, svgRoot.firstChild); }
-        const oldFilter = defs.querySelector('#text-halo');
-        if (oldFilter) oldFilter.remove();
-        const filter = doc.createElementNS('http://www.w3.org/2000/svg', 'filter');
-        filter.setAttribute('id', 'text-halo');
-        filter.setAttribute('x', '-25%'); filter.setAttribute('y', '-25%');
-        filter.setAttribute('width', '150%'); filter.setAttribute('height', '150%');
-        // radius=6 covers typical EPS vector path stroke widths
-        filter.innerHTML = `<feMorphology in="SourceAlpha" result="dilated" operator="dilate" radius="6" /><feFlood flood-color="#ffffff" flood-opacity="1" result="flooded" /><feComposite in="flooded" in2="dilated" operator="in" result="outline" /><feMerge><feMergeNode in="outline" /><feMergeNode in="SourceGraphic" /></feMerge>`;
-        defs.appendChild(filter);
-        // Apply on both tspan and parent text element for full coverage
-        ts.setAttribute('filter', 'url(#text-halo)');
-        const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
-        if (parentTextEl && parentTextEl !== ts) parentTextEl.setAttribute('filter', 'url(#text-halo)');
-      } else {
-        ts.removeAttribute('filter');
-        const parentTextEl = ts.tagName.toLowerCase() === 'text' ? ts : ts.closest('text');
-        if (parentTextEl && parentTextEl !== ts) parentTextEl.removeAttribute('filter');
-      }
-
-      if (label.isOriginalInvisible) {
-        ts.style.fill = label.textColorOverride || 'currentColor';
-        ts.style.opacity = '1'; ts.style.fillOpacity = '1'; ts.style.visibility = 'visible'; ts.style.display = 'inline';
-        let ancestor = ts.parentElement;
-        while (ancestor && ancestor !== svgRoot) {
-          const tag = ancestor.tagName.toLowerCase();
-          ancestor.style.opacity = '1'; ancestor.style.visibility = 'visible'; ancestor.style.display = tag === 'g' ? 'inline' : ancestor.style.display || '';
-          if (tag === 'text') { ancestor.style.fill = ancestor.getAttribute('fill') === 'none' && !label.textColorOverride ? 'currentColor' : (label.textColorOverride || ancestor.style.fill || ''); }
-          ancestor = ancestor.parentElement;
-        }
-      } else if (label.textColorOverride) {
-        ts.style.fill = label.textColorOverride;
-        const parentText = ts.closest('text');
-        if (parentText) parentText.style.fill = label.textColorOverride;
+    // Step 1: Build a translation map from labels state (covers both AI and manual edits)
+    const translationMap = {};
+    page.labels.forEach(label => {
+      const src = (label.source || '').trim();
+      const tgt = (label.translation || '').trim();
+      if (src && tgt && src !== tgt) {
+        translationMap[src] = tgt;
       }
     });
 
-    return { doc, svgRoot };
+    // Step 2: Apply translations via raw string replacement (preserves ALL original formatting)
+    let finalSvg = applyTranslationsToRawSvg(base, translationMap);
+
+    // Step 3: Apply style overrides (fontSizeOverride, letterSpacingOverride, etc.) if any exist
+    const hasOverrides = page.labels.some(l =>
+      l.fontSizeOverride !== undefined ||
+      l.letterSpacingOverride !== undefined ||
+      l.dxOverride !== undefined ||
+      l.dyOverride !== undefined ||
+      l.textColorOverride !== undefined
+    );
+
+    if (hasOverrides) {
+      try {
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(finalSvg, 'image/svg+xml');
+        const NS = 'http://www.w3.org/2000/svg';
+
+        // Build lookup: translated text -> label(s) with overrides
+        const overridesByText = new Map();
+        page.labels.forEach(label => {
+          const hasAnyOverride = (
+            label.fontSizeOverride !== undefined ||
+            label.letterSpacingOverride !== undefined ||
+            label.dxOverride !== undefined ||
+            label.dyOverride !== undefined ||
+            label.textColorOverride !== undefined
+          );
+          if (!hasAnyOverride) return;
+          const displayText = ((label.translation || label.source) || '').trim();
+          if (!displayText) return;
+          if (!overridesByText.has(displayText)) overridesByText.set(displayText, []);
+          overridesByText.get(displayText).push(label);
+        });
+
+        if (overridesByText.size > 0) {
+          // Walk all text/tspan elements and apply matching overrides
+          const applyCount = new Map();
+          const allTextNodes = [
+            ...Array.from(svgDoc.getElementsByTagNameNS(NS, 'text')),
+            ...Array.from(svgDoc.getElementsByTagNameNS(NS, 'tspan'))
+          ];
+
+          allTextNodes.forEach(el => {
+            // Leaf nodes only
+            const hasChildEl = Array.from(el.childNodes).some(c => c.nodeType === 1);
+            if (hasChildEl) return;
+
+            const content = (el.textContent || '').trim();
+            if (!content) return;
+
+            const candidates = overridesByText.get(content);
+            if (!candidates) return;
+
+            const idx = applyCount.get(content) || 0;
+            if (idx >= candidates.length) return;
+            const label = candidates[idx];
+            applyCount.set(content, idx + 1);
+
+            // Apply font size override
+            if (label.fontSizeOverride !== undefined) {
+              el.setAttribute('font-size', String(label.fontSizeOverride));
+              el.style.fontSize = '';
+            }
+            // Apply letter spacing override
+            if (label.letterSpacingOverride !== undefined) {
+              el.setAttribute('letter-spacing', String(label.letterSpacingOverride));
+              el.style.letterSpacing = '';
+            }
+            // Apply dx/dy overrides
+            if (label.dxOverride !== undefined) el.setAttribute('dx', String(label.dxOverride));
+            if (label.dyOverride !== undefined) el.setAttribute('dy', String(label.dyOverride));
+            // Apply text color override
+            if (label.textColorOverride !== undefined) {
+              el.setAttribute('fill', label.textColorOverride);
+              el.style.fill = '';
+            }
+          });
+
+          // Re-serialise the DOM back to a string
+          const serializer = new XMLSerializer();
+          finalSvg = serializer.serializeToString(svgDoc);
+        }
+      } catch (err) {
+        console.warn('[QAReport] Style override serialisation failed, exporting without overrides:', err);
+      }
+    }
+
+    return finalSvg;
   };
+
+  const buildFinalSvg = () => {
+    return buildFinalSvgForPage({
+      svgText,
+      originalSvgText,
+      labels
+    });
+  };
+
 
   const handleDownloadSvg = () => {
     try {
       setExportingSvg(true);
-      const { doc, svgRoot } = buildFinalSvg();
+      const rawSvg = buildFinalSvg();
 
-      // Inject watermark
-      const wmNS = 'http://www.w3.org/2000/svg';
-      const vb = svgRoot.getAttribute('viewBox');
-      let wmX = 300, wmY = 300, wmFontSize = 10;
-      if (vb) {
-        const parts = vb.split(/[\s,]+/);
-        if (parts.length === 4) {
-          const vbX = parseFloat(parts[0]), vbY = parseFloat(parts[1]), vbW = parseFloat(parts[2]), vbH = parseFloat(parts[3]);
-          wmFontSize = Math.max(6, Math.min(12, vbW * 0.018));
-          wmX = vbX + vbW - wmFontSize * 0.5; wmY = vbY + vbH - wmFontSize * 0.4;
-        }
-      }
-      const wmText = doc.createElementNS(wmNS, 'text');
-      wmText.setAttribute('x', wmX); wmText.setAttribute('y', wmY); wmText.setAttribute('font-size', wmFontSize);
-      wmText.setAttribute('font-family', 'Arial, sans-serif'); wmText.setAttribute('fill', 'rgba(100, 100, 100, 0.45)');
-      wmText.setAttribute('text-anchor', 'end'); wmText.textContent = 'www.lingochaps.com';
-      svgRoot.appendChild(wmText);
-
-      const serializedSvg = new XMLSerializer().serializeToString(doc);
-      const svgBlob = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
+      // Inject watermark via string insertion before </svg>
       const cleanFilename = filename ? filename.replace(/\.(eps|svg)$/i, '') : 'drawing';
+      const wmTag = `<text x="99%" y="99%" font-size="8" font-family="Arial, sans-serif" fill="rgba(100,100,100,0.45)" text-anchor="end">www.lingochaps.com</text>`;
+      const finalSvg = rawSvg.replace('</svg>', wmTag + '</svg>');
+
+      const svgBlob = new Blob([finalSvg], { type: 'image/svg+xml;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(svgBlob);
       link.download = cleanFilename + '_translated.svg';
@@ -184,6 +422,7 @@ export default function QAReport({
     }
   };
 
+
   const handleExport = async () => {
     setExporting(true);
     setExportText('⏳ Converting to EPS...');
@@ -192,44 +431,15 @@ export default function QAReport({
     setShowWarning(false);
 
     try {
-      // 1. Build the final SVG Document in memory
-      const { doc, svgRoot } = buildFinalSvg();
+      // 1. Build the final translated SVG string
+      const rawSvg = buildFinalSvg();
 
-      // 2. Inject Watermark proportionally
-      let wmX = 300;
-      let wmY = 300;
-      let wmFontSize = 10;
+      // 2. Inject Watermark before </svg>
+      const wmTag = `<text x="99%" y="99%" font-size="8" font-family="Arial, sans-serif" fill="rgba(100,100,100,0.45)" text-anchor="end" dominant-baseline="auto">www.lingochaps.com</text>`;
+      const serializedSvg = rawSvg.replace('</svg>', wmTag + '</svg>');
 
-      const vb = svgRoot.getAttribute('viewBox');
-      if (vb) {
-        const parts = vb.split(/[\s,]+/);
-        if (parts.length === 4) {
-          const vbX = parseFloat(parts[0]);
-          const vbY = parseFloat(parts[1]);
-          const vbW = parseFloat(parts[2]);
-          const vbH = parseFloat(parts[3]);
-          wmFontSize = Math.max(6, Math.min(12, vbW * 0.018));
-          wmX = vbX + vbW - wmFontSize * 0.5;
-          wmY = vbY + vbH - wmFontSize * 0.4;
-        }
-      }
-
-      const wmNS = 'http://www.w3.org/2000/svg';
-      const wmText = doc.createElementNS(wmNS, 'text');
-      wmText.setAttribute('x', wmX);
-      wmText.setAttribute('y', wmY);
-      wmText.setAttribute('font-size', wmFontSize);
-      wmText.setAttribute('font-family', 'Arial, sans-serif');
-      wmText.setAttribute('fill', 'rgba(100, 100, 100, 0.45)');
-      wmText.setAttribute('text-anchor', 'end');
-      wmText.setAttribute('dominant-baseline', 'auto');
-      wmText.textContent = 'www.lingochaps.com';
-      svgRoot.appendChild(wmText);
-
-      // Serialize SVG document to Blob
-      const serializedSvg = new XMLSerializer().serializeToString(doc);
-      const svgBlob = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
       const cleanFilename = filename ? filename.replace(/\.(eps|svg)$/i, '') : 'drawing';
+      const svgBlob = new Blob([serializedSvg], { type: 'image/svg+xml;charset=utf-8' });
       const svgFile = new File([svgBlob], cleanFilename + '_translated.svg', { type: 'image/svg+xml' });
 
       // 3. Trigger SVG -> EPS conversion job via CloudConvert API
@@ -380,10 +590,27 @@ export default function QAReport({
           {exportingSvg ? '⏳ Saving...' : '⬇️ Download SVG'}
         </button>
         <button
+          className="btn btn-ghost"
+          onClick={handleDownloadDocx}
+          disabled={exporting}
+          style={{
+            flex: 1,
+            minWidth: '160px',
+            margin: 0,
+            padding: '0.65rem 1.25rem',
+            cursor: exporting ? 'not-allowed' : 'pointer',
+            borderColor: '#7c3aed',
+            color: '#7c3aed',
+            background: '#f5f3ff',
+          }}
+        >
+          📝 Download DOCX
+        </button>
+        <button
           className="btn btn-primary"
           onClick={handleExport}
           disabled={exporting}
-          style={{ flex: 2, minWidth: '200px', margin: 0, padding: '0.65rem 1.5rem', cursor: exporting ? 'not-allowed' : 'pointer' }}
+          style={{ flex: 2.5, minWidth: '220px', margin: 0, padding: '0.65rem 1.25rem', cursor: exporting ? 'not-allowed' : 'pointer' }}
         >
           {exportText}
         </button>

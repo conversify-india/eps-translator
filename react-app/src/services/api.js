@@ -60,11 +60,11 @@ export const apiService = {
   /**
    * Calls the secure AI endpoint to translate text segments
    */
-  async translateText(texts, targetLanguage) {
+  async translateText(texts, targetLanguage, sourceLanguage = 'English') {
     const res = await fetch(getApiUrl('ai-translate'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts, targetLanguage })
+      body: JSON.stringify({ texts, targetLanguage, sourceLanguage })
     });
     if (!res.ok) {
       let errMessage = '';
@@ -87,11 +87,11 @@ export const apiService = {
   /**
    * Sends a proposal request email to the team with target language, customer info, and original file attachment
    */
-  async sendProposalEmail({ name, email, filename, targetLanguage, svgText, message }) {
+  async sendProposalEmail({ name, email, filename, targetLanguage, sourceLanguage, svgText, message }) {
     const res = await fetch(getApiUrl('send-proposal'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, filename, targetLanguage, svgText, message })
+      body: JSON.stringify({ name, email, filename, targetLanguage, sourceLanguage, svgText, message })
     });
     if (!res.ok) {
       let errMessage = '';
@@ -106,6 +106,37 @@ export const apiService = {
       throw new Error(errMessage || `Server error (Status ${res.status})`);
     }
     return res.json();
+  },
+
+  /**
+   * Translates a scanned document image via Gemini Vision OCR API
+   */
+  async ocrTranslate(imageBase64, sourceLanguage, targetLanguage) {
+    const res = await fetch(getApiUrl('ocr-translate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64, sourceLanguage, targetLanguage })
+    });
+    if (!res.ok) {
+      let errMessage = '';
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.error) {
+          errMessage = errJson.error;
+        }
+      } catch (e) {
+        // Fallback
+      }
+      throw new Error(errMessage || `OCR Translation error (Status ${res.status})`);
+    }
+    return res.json();
+  },
+
+  /**
+   * Gets a proxy URL for an image to prevent CORS canvas tainting
+   */
+  getProxyImageUrl(url) {
+    return getApiUrl('proxy-image', { url });
   }
 };
 

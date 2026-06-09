@@ -754,4 +754,974 @@ header.app-header p {
   color: #0284c7;
 }
 
+/* --- CANVAS CLICK-THROUGH POINTER EVENTS --- */
+.canvas-content svg * {
+  pointer-events: none;
+}
+.canvas-content svg text,
+.canvas-content svg tspan,
+.canvas-content svg [data-label-id] {
+  pointer-events: auto !important;
+}
+
+/* --- TOOL CARD UPGRADE --- */
+.tool-card {
+  background: rgba(255, 255, 255, 0.65) !important;
+  border: 1px solid rgba(226, 232, 240, 0.7) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-radius: 24px !important;
+  padding: 2.25rem 2rem !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  box-shadow: 0 10px 30px rgba(124, 58, 237, 0.02) !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-card:hover {
+  transform: translateY(-6px) scale(1.01) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: 0 30px 60px -15px rgba(124, 58, 237, 0.15) !important;
+}
+
+.tool-card.purple-theme:hover {
+  border-color: rgba(167, 139, 250, 0.5) !important;
+}
+
+.tool-card.green-theme:hover {
+  border-color: rgba(52, 211, 153, 0.5) !important;
+}
+
+.tool-card.blue-theme:hover {
+  border-color: rgba(96, 165, 250, 0.5) !important;
+}
+
+.tool-card.red-theme:hover {
+  border-color: rgba(248, 113, 113, 0.5) !important;
+}
+
+.tool-card .launch-link {
+  transition: transform 0.3s ease !important;
+}
+
+.tool-card:hover .launch-link {
+  transform: translateX(4px) !important;
+}
+
+.tool-card .icon-wrapper {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+}
+
+.tool-card:hover .icon-wrapper {
+  transform: scale(1.08) rotate(2deg) !important;
+}
+
+/* Animated Glowing Background Orbs */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.75;
+}
+
+.glow-orb-1 {
+  top: 10%;
+  left: 5%;
+  width: 450px;
+  height: 450px;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.2) 0%, rgba(124, 58, 237, 0.01) 70%);
+  animation: floatOrb 18s infinite ease-in-out alternate;
+}
+
+.glow-orb-2 {
+  bottom: 10%;
+  right: 5%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.18) 0%, rgba(59, 130, 246, 0.01) 70%);
+  animation: floatOrb2 22s infinite ease-in-out alternate-reverse;
+}
+
+@keyframes floatOrb {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(50px, 30px) scale(1.1); }
+}
+
+@keyframes floatOrb2 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-40px, -30px) scale(0.95); }
+}
+
+/* ============================================================
+   PDF CONVERTER WORKSPACE — Premium Styles
+   ============================================================ */
+
+/* Amber theme tool card */
+.tool-card.amber-theme:hover {
+  border-color: rgba(251, 191, 36, 0.5) !important;
+}
+
+/* Container */
+.pdf-converter-workspace {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Hero header */
+.pdf-converter-hero {
+  text-align: center;
+  padding: 2.5rem 1rem 2rem;
+}
+
+.pdf-converter-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.28rem 0.85rem;
+  border-radius: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.25);
+  margin-bottom: 1rem;
+}
+
+.pdf-converter-hero h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.6rem;
+}
+
+.pdf-converter-hero p {
+  font-size: 0.88rem;
+  color: #64748b;
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* Upload drop zone */
+.pdf-conv-drop-zone {
+  border: 2px dashed #e2e8f0;
+  border-radius: 20px;
+  padding: 3.5rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.pdf-conv-drop-zone::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.04), rgba(251, 191, 36, 0.06));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.pdf-conv-drop-zone:hover::before,
+.pdf-conv-drop-zone.drag-active::before {
+  opacity: 1;
+}
+
+.pdf-conv-drop-zone:hover,
+.pdf-conv-drop-zone.drag-active {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.12), 0 0 0 4px rgba(245, 158, 11, 0.06);
+  transform: translateY(-2px);
+}
+
+.pdf-conv-drop-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  margin: 0 auto 1.25rem;
+  box-shadow: 0 8px 24px rgba(217, 119, 6, 0.3);
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.pdf-conv-drop-zone:hover .pdf-conv-drop-icon,
+.pdf-conv-drop-zone.drag-active .pdf-conv-drop-icon {
+  transform: scale(1.1) rotate(-3deg);
+}
+
+.pdf-conv-drop-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.35rem;
+}
+
+.pdf-conv-drop-sub {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 1.25rem;
+}
+
+.pdf-conv-browse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.5rem;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.25);
+}
+
+.pdf-conv-browse-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(217, 119, 6, 0.35);
+}
+
+/* File info strip */
+.pdf-conv-file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.pdf-conv-file-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.pdf-conv-file-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  flex: 1;
+  word-break: break-all;
+}
+
+.pdf-conv-file-size {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.pdf-conv-file-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.pdf-conv-file-remove:hover {
+  color: #ef4444;
+}
+
+/* Feature badges */
+.pdf-conv-feature-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.pdf-conv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 0.25rem 0.65rem;
+  border-radius: 100px;
+}
+
+/* Convert button */
+.pdf-conv-convert-btn {
+  width: 100%;
+  padding: 0.9rem 2rem;
+  background: linear-gradient(135deg, #d97706, #f59e0b, #fbbf24);
+  background-size: 200% 200%;
+  animation: gradShift 4s ease infinite;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 24px rgba(217, 119, 6, 0.3);
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.pdf-conv-convert-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(217, 119, 6, 0.4);
+}
+
+.pdf-conv-convert-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  animation: none;
+}
+
+@keyframes gradShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ── Progress Stage ── */
+.pdf-conv-progress-card {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 20px;
+  padding: 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(8px);
+}
+
+.pdf-conv-progress-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 0.3rem;
+}
+
+.pdf-conv-progress-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 1.75rem;
+}
+
+/* Animated progress bar */
+.pdf-conv-bar-track {
+  width: 100%;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 100px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.pdf-conv-bar-fill {
+  height: 100%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, #d97706, #f59e0b, #fbbf24);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.pdf-conv-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: barShine 1.8s infinite;
+}
+
+@keyframes barShine {
+  to { left: 200%; }
+}
+
+.pdf-conv-bar-pct {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #d97706;
+  text-align: right;
+  margin-bottom: 1.5rem;
+  font-family: monospace;
+}
+
+/* Stage steps list */
+.pdf-conv-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.pdf-conv-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.3s ease;
+}
+
+.pdf-conv-stage:last-child {
+  border-bottom: none;
+}
+
+.pdf-conv-stage-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  transition: all 0.3s ease;
+}
+
+.pdf-conv-stage-dot.waiting {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 2px solid #e2e8f0;
+}
+
+.pdf-conv-stage-dot.active {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15);
+  animation: pulseDot 1.5s ease-in-out infinite;
+}
+
+.pdf-conv-stage-dot.done {
+  background: linear-gradient(135deg, #059669, #34d399);
+  color: #fff;
+}
+
+@keyframes pulseDot {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15); }
+  50% { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.08); }
+}
+
+.pdf-conv-stage-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  transition: color 0.3s;
+}
+
+.pdf-conv-stage.active .pdf-conv-stage-label {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.pdf-conv-stage.done .pdf-conv-stage-label {
+  color: #059669;
+}
+
+/* "Do not close" warning banner */
+.pdf-conv-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+  margin-top: 1.5rem;
+  animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pdf-conv-warning-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.pdf-conv-warning-text {
+  font-size: 0.8rem;
+  color: #92400e;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* ── Success Stage ── */
+.pdf-conv-success-card {
+  background: linear-gradient(135deg, #f0fdf4, #ffffff);
+  border: 1.5px solid #a7f3d0;
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(5, 150, 105, 0.06);
+}
+
+.pdf-conv-success-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #059669, #34d399);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  margin: 0 auto 1.25rem;
+  box-shadow: 0 8px 28px rgba(5, 150, 105, 0.3);
+  animation: successPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes successPop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.pdf-conv-success-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 0.4rem;
+}
+
+.pdf-conv-success-sub {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.pdf-conv-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 2.5rem;
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.25s ease;
+  box-shadow: 0 8px 24px rgba(5, 150, 105, 0.3);
+  margin-bottom: 1rem;
+  width: 100%;
+  justify-content: center;
+}
+
+.pdf-conv-download-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(5, 150, 105, 0.4);
+}
+
+.pdf-conv-restart-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1.5rem;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.pdf-conv-restart-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.pdf-conv-success-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 0.3rem 0.8rem;
+  border-radius: 100px;
+  margin-bottom: 1.75rem;
+}
+
+/* ── Error Card ── */
+.pdf-conv-error-card {
+  background: linear-gradient(135deg, #fff1f2, #ffffff);
+  border: 1.5px solid #fecaca;
+  border-radius: 20px;
+  padding: 2rem;
+  text-align: center;
+}
+
+.pdf-conv-error-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dc2626, #f87171);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  margin: 0 auto 1rem;
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.25);
+}
+
+.pdf-conv-error-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+}
+
+.pdf-conv-error-msg {
+  font-size: 0.83rem;
+  color: #64748b;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── Password modal overlay ── */
+.pdf-conv-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pdf-conv-modal {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.2);
+  animation: modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes modalPop {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.pdf-conv-modal-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 0.35rem;
+}
+
+.pdf-conv-modal-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.pdf-conv-modal-input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+  color: #0f172a;
+  margin-bottom: 1rem;
+}
+
+.pdf-conv-modal-input:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .pdf-converter-hero h1 {
+    font-size: 1.5rem !important;
+  }
+  .pdf-conv-drop-zone {
+    padding: 2.5rem 1.25rem !important;
+  }
+  .pdf-conv-success-card,
+  .pdf-conv-error-card,
+  .pdf-conv-progress-card {
+    padding: 1.5rem 1.25rem !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   OCR Language Selector
+════════════════════════════════════════════════════ */
+.pdf-conv-lang-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin: 1rem 0 0.25rem;
+  flex-wrap: wrap;
+}
+
+.pdf-conv-lang-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.pdf-conv-lang-hint {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.pdf-conv-lang-select {
+  flex: 1;
+  min-width: 140px;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #1e293b;
+  background: #ffffff;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  padding-right: 2rem;
+}
+
+.pdf-conv-lang-select:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+/* ══════════════════════════════════════════════════
+   Conversion Quality Panel
+════════════════════════════════════════════════════ */
+.pdf-conv-quality-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.1rem 1.25rem;
+  margin: 0 auto 1.75rem;
+  text-align: left;
+  max-width: 520px;
+  animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pdf-conv-quality-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pdf-conv-quality-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #475569;
+}
+
+/* Health score badge */
+.pdf-conv-health-score {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.22rem 0.65rem;
+  border-radius: 100px;
+  border: 1px solid;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* Document type badges row */
+.pdf-conv-quality-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+/* Document type pill */
+.pdf-conv-doc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.73rem;
+  font-weight: 700;
+  padding: 0.28rem 0.75rem;
+  border-radius: 100px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.pdf-conv-doc-badge.digital {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.pdf-conv-doc-badge.scanned {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+
+/* Alert chips area */
+.pdf-conv-chips-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+}
+
+/* Individual chip */
+.pdf-conv-health-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  animation: slideIn 0.3s ease;
+}
+
+.pdf-conv-chip-icon {
+  font-size: 0.85rem;
+  color: #d97706;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.pdf-conv-chip-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #92400e;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.pdf-conv-chip-dismiss {
+  background: none;
+  border: none;
+  color: #d97706;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.pdf-conv-chip-dismiss:hover {
+  opacity: 1;
+}
+
+/* All-clear state */
+.pdf-conv-quality-allclear {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+/* ── Responsive additions ── */
+@media (max-width: 600px) {
+  .pdf-conv-lang-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .pdf-conv-lang-select {
+    width: 100% !important;
+  }
+  .pdf-conv-quality-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .pdf-conv-quality-panel {
+    padding: 0.85rem 1rem !important;
+  }
+}
 

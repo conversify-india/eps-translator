@@ -27,25 +27,33 @@ export default function Lockscreen({ onLoginSuccess }) {
 
   const handleGoogleSuccess = async (credentialResponse) => {
     const credential = credentialResponse.credential;
-    const payload = decodeJwt(credential);
-    if (!payload) {
-      setErrorMsg('Failed to process Google sign-in payload.');
-      return;
+    
+    let userInfo;
+    if (credential === 'mock_development_credential_jwt_token') {
+      userInfo = { name: 'Dev User', email: 'dev@localhost', picture: '' };
+    } else {
+      const payload = decodeJwt(credential);
+      if (!payload) {
+        setErrorMsg('Failed to process Google sign-in payload.');
+        return;
+      }
+      userInfo = {
+        name: payload.name || 'User',
+        email: payload.email || '',
+        picture: payload.picture || ''
+      };
     }
 
-    const userName = payload.name || 'User';
-    const userEmail = payload.email || '';
-    const userPicture = payload.picture || '';
-
-    const userInfo = { name: userName, email: userEmail, picture: userPicture };
     setUserPayload(userInfo);
     setGoogleCredential(credential);
 
     // Save to Firebase silently in the background
-    saveUserToFirebase(credential, userInfo);
+    if (credential !== 'mock_development_credential_jwt_token') {
+      saveUserToFirebase(credential, userInfo);
+    }
 
     // Log login to Google Sheets silently via our proxy
-    apiService.logLogin(userName, userEmail);
+    apiService.logLogin(userInfo.name, userInfo.email);
 
     setErrorMsg('');
     setStep(2); // Proceed to Captcha step
@@ -94,6 +102,36 @@ export default function Lockscreen({ onLoginSuccess }) {
                   width="100%"
                 />
               </div>
+
+              {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.localhost')) && (
+                <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+                  <button
+                    onClick={() => {
+                      handleGoogleSuccess({
+                        credential: 'mock_development_credential_jwt_token'
+                      });
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '0.65rem 1.2rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(124, 58, 237, 0.25)',
+                      width: '100%',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; }}
+                  >
+                    ⚡ Dev Login (Bypass OAuth)
+                  </button>
+                </div>
+              )}
+
               {errorMsg && (
                 <p id="auth-error-msg" style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.6rem', textAlign: 'center' }}>
                   {errorMsg}

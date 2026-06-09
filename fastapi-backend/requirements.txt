@@ -1,0 +1,8 @@
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+httpx>=0.24.1
+python-docx>=0.8.11
+pdf2docx>=0.5.6
+ezdxf>=0.18.0

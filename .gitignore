@@ -19,3 +19,30 @@ api.php
 # Compiled/zipped archives
 *.zip
 
+# Python compile caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+
+# Temporary run logs
+pdf_conversion_debug.log
+ocr_debug_log.json
+
+# Local test outputs (Word documents & watcher reports)
+test_*.docx
+test_*.docx_report.json
+
+# Temporary DWG / DXF processing folder
+temp_dwg/
+
+# Duplicate build directories
+react-app/dist 2/
+
+# Experimental scratch directory
+scratch/
+
